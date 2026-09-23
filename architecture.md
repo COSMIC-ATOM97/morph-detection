@@ -1,4 +1,4 @@
-```markdown
+
 # Student-Scoped UID-MAD: Practical Unified Interpretable Dual-Stream Morph Attack Detection
 
 **Version:** 1.0 (College-Student Feasible)  
@@ -204,9 +204,4 @@ It removes the highest-risk, highest-effort components while preserving the idea
 4. Run the first honest LOO baseline.
 
 This version is ready to code.
-```
-
-You can copy the entire block above directly into a new `.md` file.  
-
-Would you like me to also generate a short “Phase 0 starter checklist” or a minimal PyTorch class skeleton for the dual-stream model next?
 
