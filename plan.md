@@ -1,158 +1,152 @@
 # Implementation Plan: DINO-Branch Morph Attack Detection (Kaggle Baseline)
 
 **Target:** Single-stream foundation model baseline for Morph Attack Detection (MAD) trained on SMDD and evaluated cross-dataset on FRLL-Morphs.  
-**Scope Decision:** Focused exclusively on the DINO branch (Stream A: self-supervised ViT backbone + ArcFace classification head). All secondary streams (frequency residual stream, U-Net mask decoder, landmark regional attention, adversarial GRL disentanglement, semi-supervised consistency) are deferred to later iterations.
+**Scope Decision:** DINO branch only (Stream A: self-supervised ViT backbone + ArcFace classification head). All secondary streams deferred.
 
 ---
 
-## 1. Dataset Verification & Findings
+## 1. Dataset Inventory (Verified)
 
-Direct binary inspection of the workspace archives confirms the following distribution:
+### SMDD (`SMDD_release_train.zip` -- 4.54 GB)
+- **Role:** Training + in-domain validation.
+- **40,000** synthetic face images at **256x256 PNG**.
+  - Bonafide (`os25k_bf_t/`): **25,000**.
+  - Morph attacks (`m15k_t/`): **15,000**.
+- **Metadata:** `train.csv` with columns `image_path,label` (`bonafide` | `attack`).
+- **Class ratio:** 5:3 bonafide-to-morph. Handled via weighted random sampler during training.
 
-### SMDD (`SMDD_release_train.zip` - 4.54 GB)
-- **Role:** Primary training and in-domain validation.
-- **Images:** 40,000 synthetic face images in 256x256 PNG format.
-  - Bonafide (`os25k_bf_t/`): 25,000 images.
-  - Morph Attacks (`m15k_t/`): 15,000 images.
-- **Metadata:** `train.csv` provided with columns `image_path,label` (`bonafide` vs `attack`).
-
-### FRLL-Morphs (`drive-download-20261010T174433Z-1-001.zip` - 327 MB)
-- **Role:** Strict Out-of-Distribution (OOD) cross-dataset and cross-algorithm test set.
-- **Images:** 7,274 total images in JPEG format.
-  - Bonafide (`raw/`): 204 images from London Research Lab (1350x1350 high resolution).
-  - OpenCV morphs (`morph_opencv/`): 1,221 images (431x513).
-  - FaceMorpher morphs (`morph_facemorpher/`): 1,222 images (431x513).
-  - WebMorph morphs (`morph_webmorph/`): 1,222 images (413x531).
-  - StyleGAN2 morphs (`morph_stylegan/`): 1,225 images (1024x1024).
-  - AMSL morphs (`morph_amsl/`): 2,180 images (413x531).
-- **Protocols:** 795 `.lst` files in `protocols/` defining probe and model evaluation splits.
+### FRLL-Morphs (`drive-download-20261010T174433Z-1-001.zip` -- 327 MB)
+- **Role:** Strict OOD cross-dataset and cross-algorithm test set. Never seen during training.
+- **7,274** real images in JPEG:
+  - Bonafide (`raw/`): **204** images (1350x1350).
+  - OpenCV morphs (`morph_opencv/`): **1,221** (431x513).
+  - FaceMorpher (`morph_facemorpher/`): **1,222** (431x513).
+  - WebMorph (`morph_webmorph/`): **1,222** (413x531).
+  - StyleGAN2 (`morph_stylegan/`): **1,225** (1024x1024).
+  - AMSL (`morph_amsl/`): **2,180** (413x531).
+- **Protocols:** 795 `.lst` split files in `protocols/`.
 
 ---
 
-## 2. Model Architecture
+## 2. Architecture
 
 ```
-                    ┌──────────────────────────────┐
-                    │       Input Face Image       │
-                    │      (224x224 RGB Crop)      │
-                    └──────────────┬───────────────┘
-                                   │
-                                   ▼
-                    ┌──────────────────────────────┐
-                    │      DINO ViT Backbone       │
-                    │   - DINOv2 (ViT-S/14) or     │
-                    │   - DINOv3 (ViT-S/16)        │
-                    │   Feature dim: D = 384       │
-                    └──────────────┬───────────────┘
-                                   │
-                                   ▼
-                    ┌──────────────────────────────┐
-                    │       Embedding Norm         │
-                    │       z = L2_norm(CLS)       │
-                    └──────────────┬───────────────┘
-                                   │
-                                   ▼
-                    ┌──────────────────────────────┐
-                    │   ArcFace Classification     │
-                    │   W = L2_norm(Weights)       │
-                    │   logits = s * cos(theta + m)│
-                    │   s = 30.0, m = 0.35         │
-                    └──────────────┬───────────────┘
-                                   │
-                                   ▼
-                    ┌──────────────────────────────┐
-                    │      Morph Risk Score        │
-                    │          P in [0, 1]         │
-                    └──────────────────────────────┘
+Input (224x224 RGB)
+      │
+      ▼
+┌─────────────────────────────┐
+│  DINOv2 ViT-S/14 Backbone   │
+│  (frozen or last-N unfreeze) │
+│  Output: CLS token (384-d)  │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│  Projection + BN + L2 Norm  │
+│  (384 → 256-d embedding)    │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│  ArcFace Margin Head        │
+│  s=30.0, m=0.35, 2 classes  │
+│  Loss: CrossEntropy on      │
+│    s * cos(theta + m)       │
+└──────────────┬──────────────┘
+               │
+               ▼
+      Morph score P in [0,1]
 ```
 
-### Components
-1. **Backbone:**
-   - DINOv2 ViT-S/14 (`facebook/dinov2-small` via HuggingFace or PyTorch Hub): un-gated public weights, works on Kaggle out-of-the-box.
-   - DINOv3 ViT-S/16 (`facebook/dinov3-vits16-pretrain-lvd1689m`): gated HuggingFace weights, supported via user token.
-   - Configurable via parameter `--backbone`, defaulting to DINOv2 for reproducible execution.
-2. **Head:**
-   - Linear projection + batch normalization + L2 normalized representation.
-   - ArcFace metric head enforcing angular margin between bonafide and morph classes in hyperspherical space.
-   - Binary cross-entropy (BCE) loss on scaled margins.
+- **Default backbone:** `facebook/dinov2-small` (public, no gating, works on Kaggle directly).
+- **Optional upgrade:** DINOv3 via `--backbone dinov3` with HuggingFace token.
 
 ---
 
 ## 3. Training Protocol
 
-### Phase 1: Warm-up (Head Only)
-- **Epochs:** 1 - 3
-- **Frozen:** Entire ViT backbone.
-- **Trained:** Projection layer and ArcFace head.
-- **Optimizer:** AdamW, learning rate = 1e-3, weight decay = 1e-4.
-- **Purpose:** Prevent noisy initial head gradients from degrading pretrained self-supervised representations.
+### Stage 1 -- Head Warm-up (Epochs 1-3)
+- Backbone fully frozen.
+- Train projection + ArcFace head only.
+- AdamW, lr=1e-3, weight_decay=1e-4.
 
-### Phase 2: Differential Fine-Tuning
-- **Epochs:** 4 - 10
-- **Unfrozen:** Top 2-4 transformer blocks of the ViT backbone.
-- **Optimizer:** AdamW with cosine annealing schedule:
-  - Backbone learning rate = 1e-5.
-  - Head learning rate = 1e-4.
-- **Precision:** Mixed precision training (`torch.cuda.amp.autocast`) to minimize VRAM usage and maximize throughput.
+### Stage 2 -- Differential Fine-tuning (Epochs 4-10)
+- Unfreeze last 2 transformer blocks.
+- Backbone lr=1e-5, Head lr=1e-4.
+- Cosine annealing schedule.
+- Mixed precision (AMP) throughout.
 
-### Augmentations (Anti-Overfitting)
-- Simulated JPEG compression (quality range 30 to 90).
-- Mild Gaussian blur and Gaussian noise.
-- Random horizontal flip (p = 0.5).
-- Image resizing to 224x224 and ImageNet normalization.
+### Class Balance
+- WeightedRandomSampler during training to equalize bonafide/morph sampling rates (compensates 5:3 imbalance in SMDD).
+
+### Augmentations (Matching architecture.md spec)
+- **JPEG compression:** quality 20-70 (extreme low end per architecture spec).
+- **Gaussian blur:** kernel 3-7, sigma 0.1-2.0.
+- **Motion blur:** kernel 3-7.
+- **Print-scan simulation:** downsample 0.5x + JPEG q=40 + Gaussian noise sigma=5-15 + upsample back.
+- **Random gamma/brightness** shift.
+- **Random horizontal flip** (p=0.5).
+- **Color jitter** (brightness, contrast, saturation, hue).
+- Resize to 224x224 + ImageNet normalization.
 
 ---
 
-## 4. Evaluation Suite (ISO/IEC 30107-3 Standard)
+## 4. Evaluation Protocol (ISO/IEC 30107-3)
 
 ### In-Domain Validation
-- 20% stratified hold-out from SMDD (5,000 bonafide, 3,000 morph).
-- Used for checkpointing the model based on lowest validation EER.
+- 20% stratified holdout from SMDD (5,000 bonafide, 3,000 morph).
+- Checkpoint selection: lowest validation EER.
 
-### Cross-Dataset / Cross-Algorithm Evaluation (OOD)
-The best checkpoint is evaluated on FRLL-Morphs across all 5 distinct generators without fine-tuning:
-1. `FRLL-OpenCV`
-2. `FRLL-FaceMorpher`
-3. `FRLL-WebMorph`
-4. `FRLL-StyleGAN2`
-5. `FRLL-AMSL`
+### Cross-Dataset Evaluation (OOD -- No Fine-tuning)
+Best checkpoint evaluated on FRLL-Morphs:
 
-### Metrics Reported Per Split
-- **EER (Equal Error Rate):** Threshold where False Accept Rate equals False Reject Rate.
-- **BPCER @ APCER = 1%:** Bona Fide Presentation Classification Error Rate when Attack Presentation Classification Error Rate is held at 1% (strict security).
-- **BPCER @ APCER = 5%:** Operational screening threshold.
-- **ROC-AUC:** Overall separation quality.
+| Test Split | Bonafide Source | Attack Source | Attack Count |
+|---|---|---|---|
+| FRLL-OpenCV | `raw/` (204) | `morph_opencv/` | 1,221 |
+| FRLL-FaceMorpher | `raw/` (204) | `morph_facemorpher/` | 1,222 |
+| FRLL-WebMorph | `raw/` (204) | `morph_webmorph/` | 1,222 |
+| FRLL-StyleGAN2 | `raw/` (204) | `morph_stylegan/` | 1,225 |
+| FRLL-AMSL | `raw/` (204) | `morph_amsl/` | 2,180 |
+
+### Degradation Condition Slices
+Each FRLL split also evaluated under synthetic degradation applied at test time:
+- **Heavy JPEG:** quality 30 applied to test images before inference.
+- **Simulated print-scan:** downsample 0.5x + JPEG q=40 + noise + upsample.
+
+### Metrics Per Split
+- **EER** (Equal Error Rate).
+- **BPCER @ APCER = 1%** (border security operating point).
+- **BPCER @ APCER = 5%** (screening operating point).
+- **ROC-AUC**.
+
+### Honesty Rule
+Any result near 0% EER triggers a data-leakage audit before reporting.
 
 ---
 
-## 5. Kaggle Execution Blueprint
+## 5. Kaggle Execution
 
-- **Hardware Target:** Single NVIDIA T4 GPU (16 GB VRAM).
-- **Batch Size:** 64.
-- **Expected Speed:** ~2 to 3 minutes per epoch on 32,000 training samples.
-- **Memory Footprint:** < 6 GB VRAM with AMP enabled.
-- **Storage Strategy:** Datasets mounted read-only from `/kaggle/input/`, checkpoints and metrics written to `/kaggle/working/`.
+- **GPU:** Single NVIDIA T4 (16 GB VRAM).
+- **Batch size:** 64 (fits comfortably in ~5 GB VRAM with AMP).
+- **Epoch time:** ~2-3 min on 32k training samples.
+- **Total runtime:** ~30-40 min for full 10-epoch run + evaluation.
+- **Data path:** `/kaggle/input/smdd-morph/` and `/kaggle/input/frll-morphs/`.
+- **Output path:** `/kaggle/working/` for checkpoints, metrics CSV, and ROC plots.
 
 ---
 
-## 6. Implementation File Structure
+## 6. File Structure
 
 ```
-src/
-├── dataset.py        # SMDD and FRLL-Morphs PyTorch dataset loaders + augmentations
-├── model.py          # DINOv2 / DINOv3 backbone wrapper + ArcFace head
-├── metrics.py        # Strict ISO/IEC 30107-3 metrics calculator (EER, BPCER@APCER)
-├── train.py          # Two-stage training loop with AMP and checkpointing
-└── evaluate.py       # Standalone OOD evaluation on FRLL-Morphs subsets
-kaggle_runner.ipynb   # Ready-to-run Kaggle notebook assembling pipeline
+kaggle_train.py       # Complete self-contained training + evaluation script for Kaggle
 ```
+
+Single-file design. Kaggle notebooks cannot import from `src/` subdirectories without packaging. Everything lives in one script that runs end-to-end in a single notebook cell.
 
 ---
 
-## 7. Follow-Up Execution Prompt
-
-When you are ready to begin implementation, copy and send the following prompt:
+## 7. Follow-Up Prompt
 
 ```text
-Please proceed with implementing the DINO branch plan from plan.md. Build out src/dataset.py, src/model.py, src/metrics.py, src/train.py, src/evaluate.py, and the kaggle_runner notebook, ensuring all unit checks pass.
+Please proceed with implementing the DINO branch plan from plan.md. Build kaggle_train.py as a single self-contained script.
 ```
