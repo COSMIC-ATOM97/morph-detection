@@ -159,36 +159,35 @@ def get_degraded_transforms(img_size: int, mode: str = "jpeg") -> A.Compose:
 
 
 # ---------------------------------------------------------------------------
-# Datasets
+# Datasets (Supports both .zip archives and extracted folders)
 # ---------------------------------------------------------------------------
 
 class SMDDDataset(Dataset):
-    """Reads SMDD images from a zip archive using train.csv metadata."""
+    """Reads SMDD images from a zip archive or an extracted directory using train.csv metadata."""
 
-    def __init__(self, zip_path: str, entries: list, transform=None):
-        """
-        Args:
-            zip_path: Path to SMDD_release_train.zip.
-            entries: List of (image_path, label_int) tuples.
-            transform: Albumentations transform.
-        """
-        self.zip_path = zip_path
+    def __init__(self, data_source: str, entries: list, transform=None):
+        self.data_source = data_source
+        self.is_zip = os.path.isfile(data_source) and zipfile.is_zipfile(data_source)
         self.entries = entries
         self.transform = transform
         self._zf = None
 
     def _open_zip(self):
-        if self._zf is None:
-            self._zf = zipfile.ZipFile(self.zip_path, "r")
+        if self.is_zip and self._zf is None:
+            self._zf = zipfile.ZipFile(self.data_source, "r")
 
     def __len__(self):
         return len(self.entries)
 
     def __getitem__(self, idx):
-        self._open_zip()
-        img_path, label = self.entries[idx]
-        img_bytes = self._zf.read(img_path)
-        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        img_rel_path, label = self.entries[idx]
+        if self.is_zip:
+            self._open_zip()
+            img_bytes = self._zf.read(img_rel_path)
+            img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        else:
+            full_path = os.path.join(self.data_source, img_rel_path)
+            img = Image.open(full_path).convert("RGB")
         img = np.array(img)
         if self.transform:
             img = self.transform(image=img)["image"]
@@ -196,30 +195,38 @@ class SMDDDataset(Dataset):
 
     def __del__(self):
         if self._zf is not None:
-            self._zf.close()
+            try:
+                self._zf.close()
+            except Exception:
+                pass
 
 
 class FRLLDataset(Dataset):
-    """Reads FRLL-Morphs images from a zip for evaluation."""
+    """Reads FRLL-Morphs images from a zip archive or an extracted directory for evaluation."""
 
-    def __init__(self, zip_path: str, bonafide_paths: list, morph_paths: list, transform=None):
-        self.zip_path = zip_path
+    def __init__(self, data_source: str, bonafide_paths: list, morph_paths: list, transform=None):
+        self.data_source = data_source
+        self.is_zip = os.path.isfile(data_source) and zipfile.is_zipfile(data_source)
         self.entries = [(p, 0) for p in bonafide_paths] + [(p, 1) for p in morph_paths]
         self.transform = transform
         self._zf = None
 
     def _open_zip(self):
-        if self._zf is None:
-            self._zf = zipfile.ZipFile(self.zip_path, "r")
+        if self.is_zip and self._zf is None:
+            self._zf = zipfile.ZipFile(self.data_source, "r")
 
     def __len__(self):
         return len(self.entries)
 
     def __getitem__(self, idx):
-        self._open_zip()
-        img_path, label = self.entries[idx]
-        img_bytes = self._zf.read(img_path)
-        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        img_rel_path, label = self.entries[idx]
+        if self.is_zip:
+            self._open_zip()
+            img_bytes = self._zf.read(img_rel_path)
+            img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        else:
+            full_path = os.path.join(self.data_source, img_rel_path)
+            img = Image.open(full_path).convert("RGB")
         img = np.array(img)
         if self.transform:
             img = self.transform(image=img)["image"]
@@ -227,14 +234,23 @@ class FRLLDataset(Dataset):
 
     def __del__(self):
         if self._zf is not None:
-            self._zf.close()
+            try:
+                self._zf.close()
+            except Exception:
+                pass
 
 
-def load_smdd_entries(zip_path: str):
-    """Parse train.csv inside the SMDD zip and return list of (path, label_int)."""
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        csv_bytes = zf.read("train.csv").decode("utf-8")
-    reader = csv.DictReader(io.StringIO(csv_bytes))
+def load_smdd_entries(data_source: str):
+    """Parse train.csv inside the SMDD zip or directory and return list of (rel_path, label_int)."""
+    if os.path.isfile(data_source) and zipfile.is_zipfile(data_source):
+        with zipfile.ZipFile(data_source, "r") as zf:
+            csv_bytes = zf.read("train.csv").decode("utf-8")
+        reader = csv.DictReader(io.StringIO(csv_bytes))
+    else:
+        csv_file = os.path.join(data_source, "train.csv")
+        with open(csv_file, "r", encoding="utf-8") as f:
+            reader = list(csv.DictReader(f))
+
     entries = []
     for row in reader:
         label = 0 if row["label"] == "bonafide" else 1
@@ -242,17 +258,28 @@ def load_smdd_entries(zip_path: str):
     return entries
 
 
-def load_frll_paths(zip_path: str):
-    """Enumerate FRLL-Morphs paths grouped by generator."""
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        all_names = zf.namelist()
+def load_frll_paths(data_source: str):
+    """Enumerate FRLL-Morphs relative paths grouped by generator."""
+    if os.path.isfile(data_source) and zipfile.is_zipfile(data_source):
+        with zipfile.ZipFile(data_source, "r") as zf:
+            all_names = zf.namelist()
+    else:
+        all_names = []
+        for root, _, files in os.walk(data_source):
+            for file in files:
+                rel = os.path.relpath(os.path.join(root, file), data_source)
+                all_names.append(rel.replace("\\", "/"))
 
-    bonafide = sorted([n for n in all_names if n.startswith("raw/") and n.endswith(".jpg")])
+    bonafide = sorted([
+        n for n in all_names
+        if (n.startswith("raw/") or "/raw/" in n) and n.endswith(".jpg")
+    ])
     generators = {}
     for prefix in ["morph_opencv", "morph_facemorpher", "morph_webmorph", "morph_stylegan", "morph_amsl"]:
         generators[prefix] = sorted([
             n for n in all_names
-            if n.startswith(prefix + "/") and (n.endswith(".jpg") or n.endswith(".png"))
+            if (n.startswith(prefix + "/") or f"/{prefix}/" in n)
+            and (n.endswith(".jpg") or n.endswith(".png"))
         ])
     return bonafide, generators
 
@@ -672,37 +699,56 @@ def evaluate_frll(cfg: Config, model: MorphDetector = None):
 # Main
 # ---------------------------------------------------------------------------
 
+def auto_detect_datasets(cfg: Config):
+    """Recursively search /kaggle/input and current directory for datasets (both zip and extracted)."""
+    search_roots = ["/kaggle/input", "."]
+
+    # Find SMDD
+    if not os.path.exists(cfg.SMDD_ZIP):
+        for sroot in search_roots:
+            if not os.path.exists(sroot):
+                continue
+            for root, dirs, files in os.walk(sroot):
+                if "train.csv" in files:
+                    cfg.SMDD_ZIP = root
+                    break
+                for f in files:
+                    if f.endswith(".zip") and "smdd" in f.lower():
+                        cfg.SMDD_ZIP = os.path.join(root, f)
+                        break
+                if os.path.exists(cfg.SMDD_ZIP):
+                    break
+            if os.path.exists(cfg.SMDD_ZIP):
+                break
+
+    # Find FRLL
+    if not os.path.exists(cfg.FRLL_ZIP):
+        for sroot in search_roots:
+            if not os.path.exists(sroot):
+                continue
+            for root, dirs, files in os.walk(sroot):
+                if any("morph_opencv" in d for d in dirs):
+                    cfg.FRLL_ZIP = root
+                    break
+                for f in files:
+                    if f.endswith(".zip") and ("drive-download" in f or "frll" in f.lower()):
+                        cfg.FRLL_ZIP = os.path.join(root, f)
+                        break
+                if os.path.exists(cfg.FRLL_ZIP):
+                    break
+            if os.path.exists(cfg.FRLL_ZIP):
+                break
+
+
 def main():
     cfg = Config()
-
-    # Detect paths -- support both extracted and zip-mounted forms
-    # If running locally or with different paths, adjust Config above
-    if not os.path.exists(cfg.SMDD_ZIP):
-        # Try common alternative paths
-        for alt in [
-            "/kaggle/input/smdd-release-train/SMDD_release_train.zip",
-            "/kaggle/input/smdd/SMDD_release_train.zip",
-            "./SMDD_release_train.zip",
-        ]:
-            if os.path.exists(alt):
-                cfg.SMDD_ZIP = alt
-                break
-
-    if not os.path.exists(cfg.FRLL_ZIP):
-        for alt in [
-            "/kaggle/input/frll-morphs/drive-download-20261010T174433Z-1-001.zip",
-            "/kaggle/input/frll/drive-download-20261010T174433Z-1-001.zip",
-            "./drive-download-20261010T174433Z-1-001.zip",
-        ]:
-            if os.path.exists(alt):
-                cfg.FRLL_ZIP = alt
-                break
+    auto_detect_datasets(cfg)
 
     print(f"SMDD path: {cfg.SMDD_ZIP} (exists={os.path.exists(cfg.SMDD_ZIP)})")
     print(f"FRLL path: {cfg.FRLL_ZIP} (exists={os.path.exists(cfg.FRLL_ZIP)})")
 
-    assert os.path.exists(cfg.SMDD_ZIP), f"SMDD zip not found at {cfg.SMDD_ZIP}"
-    assert os.path.exists(cfg.FRLL_ZIP), f"FRLL zip not found at {cfg.FRLL_ZIP}"
+    assert os.path.exists(cfg.SMDD_ZIP), f"SMDD dataset not found. Checked /kaggle/input and current directory."
+    assert os.path.exists(cfg.FRLL_ZIP), f"FRLL dataset not found. Checked /kaggle/input and current directory."
 
     # Train
     model = train(cfg)
