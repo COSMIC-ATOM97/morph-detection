@@ -360,19 +360,19 @@ class MorphDetector(nn.Module):
             for param in self.backbone.norm.parameters():
                 param.requires_grad = True
 
-    def forward(self, x, labels=None):
+    def forward(self, x, labels=None, return_scores=False):
         features = self.backbone(x)  # (B, EMBED_DIM)
         proj = self.projector(features)  # (B, PROJ_DIM)
+        if return_scores:
+            logits = self.arc_head(proj, labels=None)
+            probs = F.softmax(logits, dim=1)
+            return probs[:, 1]  # morph class probability
         logits = self.arc_head(proj, labels)  # (B, NUM_CLASSES)
         return logits
 
     def get_scores(self, x):
         """Inference: return morph probability scores."""
-        features = self.backbone(x)
-        proj = self.projector(features)
-        logits = self.arc_head(proj, labels=None)
-        probs = F.softmax(logits, dim=1)
-        return probs[:, 1]  # morph class probability
+        return self.forward(x, return_scores=True)
 
 
 # ---------------------------------------------------------------------------
@@ -490,7 +490,7 @@ def validate(model, loader, device):
     for images, labels in loader:
         images = images.to(device, non_blocking=True)
         with autocast():
-            scores = model.get_scores(images)
+            scores = model(images, return_scores=True)
         all_scores.append(scores.cpu().numpy())
         all_labels.append(labels.numpy())
 
@@ -502,12 +502,16 @@ def validate(model, loader, device):
 
 
 def train(cfg: Config):
-    """Full two-stage training pipeline."""
+    """Full two-stage training pipeline with automatic multi-GPU support."""
     seed_everything(cfg.SEED)
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
 
+    num_gpus = torch.cuda.device_count()
+    effective_bs = cfg.BATCH_SIZE * max(1, num_gpus)
+
     print("=" * 60)
     print("DINO-Branch Morph Attack Detection -- Training")
+    print(f"  Available GPUs: {num_gpus} | Effective Batch Size: {effective_bs}")
     print("=" * 60)
 
     # ---- Data ----
@@ -528,22 +532,27 @@ def train(cfg: Config):
     val_ds = SMDDDataset(cfg.SMDD_ZIP, val_entries, transform=get_val_transforms(cfg.IMG_SIZE))
 
     sampler = build_sampler(train_entries)
-    train_loader = DataLoader(train_ds, batch_size=cfg.BATCH_SIZE, sampler=sampler,
+    train_loader = DataLoader(train_ds, batch_size=effective_bs, sampler=sampler,
                               num_workers=cfg.NUM_WORKERS, pin_memory=True, drop_last=True)
-    val_loader = DataLoader(val_ds, batch_size=cfg.BATCH_SIZE, shuffle=False,
+    val_loader = DataLoader(val_ds, batch_size=effective_bs, shuffle=False,
                             num_workers=cfg.NUM_WORKERS, pin_memory=True)
 
     # ---- Model ----
     print("\n[2/5] Building model...")
-    model = MorphDetector(cfg).to(cfg.DEVICE)
-    model.freeze_backbone()
+    raw_model = MorphDetector(cfg).to(cfg.DEVICE)
+    raw_model.freeze_backbone()
     print(f"  Backbone: {cfg.BACKBONE} (frozen)")
     print(f"  Projection: {cfg.EMBED_DIM} -> {cfg.PROJ_DIM}")
     print(f"  ArcFace: s={cfg.ARCFACE_S}, m={cfg.ARCFACE_M}")
 
-    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    total_params = sum(p.numel() for p in model.parameters())
+    trainable = sum(p.numel() for p in raw_model.parameters() if p.requires_grad)
+    total_params = sum(p.numel() for p in raw_model.parameters())
     print(f"  Trainable: {trainable:,} / {total_params:,} parameters")
+
+    model = raw_model
+    if num_gpus > 1:
+        print(f"  Enabling nn.DataParallel across {num_gpus} GPUs.")
+        model = nn.DataParallel(raw_model)
 
     scaler = GradScaler()
     best_eer = 1.0
@@ -552,7 +561,7 @@ def train(cfg: Config):
     # ---- Stage 1: Head warm-up ----
     print("\n[3/5] Stage 1: Head warm-up...")
     optimizer = torch.optim.AdamW(
-        filter(lambda p: p.requires_grad, model.parameters()),
+        filter(lambda p: p.requires_grad, raw_model.parameters()),
         lr=cfg.HEAD_LR, weight_decay=cfg.WEIGHT_DECAY,
     )
 
@@ -566,20 +575,20 @@ def train(cfg: Config):
 
         if val_metrics["EER"] < best_eer:
             best_eer = val_metrics["EER"]
-            torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "best_model.pt"))
+            torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "best_model.pt"))
             print(f"    -> New best EER: {best_eer:.4f}")
 
     # ---- Stage 2: Differential fine-tuning ----
     print(f"\n[4/5] Stage 2: Unfreezing last {cfg.UNFREEZE_BLOCKS} blocks...")
-    model.unfreeze_last_n_blocks(cfg.UNFREEZE_BLOCKS)
+    raw_model.unfreeze_last_n_blocks(cfg.UNFREEZE_BLOCKS)
 
-    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    trainable = sum(p.numel() for p in raw_model.parameters() if p.requires_grad)
     print(f"  Trainable: {trainable:,} / {total_params:,} parameters")
 
     # Differential LR: backbone params get lower LR
     backbone_params = []
     head_params = []
-    for name, param in model.named_parameters():
+    for name, param in raw_model.named_parameters():
         if not param.requires_grad:
             continue
         if name.startswith("backbone"):
@@ -606,7 +615,7 @@ def train(cfg: Config):
 
         if val_metrics["EER"] < best_eer:
             best_eer = val_metrics["EER"]
-            torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "best_model.pt"))
+            torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "best_model.pt"))
             print(f"    -> New best EER: {best_eer:.4f}")
 
     # Save training history
@@ -620,20 +629,29 @@ def train(cfg: Config):
 # Evaluation Engine
 # ---------------------------------------------------------------------------
 
-def evaluate_frll(cfg: Config, model: MorphDetector = None):
+def evaluate_frll(cfg: Config, model: nn.Module = None):
     """Evaluate best checkpoint on all FRLL-Morphs generator splits + degradation conditions."""
 
     print("\n" + "=" * 60)
     print("Cross-Dataset Evaluation on FRLL-Morphs")
     print("=" * 60)
 
+    num_gpus = torch.cuda.device_count()
+    effective_bs = cfg.BATCH_SIZE * max(1, num_gpus)
+
     # Load best model
     if model is None:
-        model = MorphDetector(cfg).to(cfg.DEVICE)
-    ckpt_path = os.path.join(cfg.OUTPUT_DIR, "best_model.pt")
-    if os.path.exists(ckpt_path):
-        model.load_state_dict(torch.load(ckpt_path, map_location=cfg.DEVICE))
-        print(f"  Loaded checkpoint: {ckpt_path}")
+        raw_model = MorphDetector(cfg).to(cfg.DEVICE)
+        ckpt_path = os.path.join(cfg.OUTPUT_DIR, "best_model.pt")
+        if os.path.exists(ckpt_path):
+            raw_model.load_state_dict(torch.load(ckpt_path, map_location=cfg.DEVICE))
+            print(f"  Loaded checkpoint: {ckpt_path}")
+        model = raw_model
+        if num_gpus > 1:
+            model = nn.DataParallel(raw_model)
+    elif not isinstance(model, nn.DataParallel) and num_gpus > 1:
+        model = nn.DataParallel(model)
+
     model.eval()
 
     bonafide_paths, generators = load_frll_paths(cfg.FRLL_ZIP)
@@ -651,7 +669,7 @@ def evaluate_frll(cfg: Config, model: MorphDetector = None):
     for gen_name, morph_paths in generators.items():
         for cond_name, transform in conditions:
             ds = FRLLDataset(cfg.FRLL_ZIP, bonafide_paths, morph_paths, transform=transform)
-            loader = DataLoader(ds, batch_size=cfg.BATCH_SIZE, shuffle=False,
+            loader = DataLoader(ds, batch_size=effective_bs, shuffle=False,
                                 num_workers=cfg.NUM_WORKERS, pin_memory=True)
             metrics, labels, scores = validate(model, loader, cfg.DEVICE)
 
