@@ -58,7 +58,7 @@ class Config:
     OUTPUT_DIR = "/kaggle/working"
 
     # Backbone
-    BACKBONE = "dinov2_vits14"  # timm model name; or "dinov2_vitb14" for ViT-B
+    BACKBONE = "vit_small_patch14_dinov2.lvd142m"  # timm model name
     EMBED_DIM = 384  # 384 for ViT-S, 768 for ViT-B
     PROJ_DIM = 256
 
@@ -323,12 +323,25 @@ class MorphDetector(nn.Module):
         super().__init__()
         self.cfg = cfg
 
-        # Load backbone via timm
-        self.backbone = timm.create_model(
+        # Load backbone (try timm variants, fallback to torch.hub)
+        backbone_loaded = False
+        candidates = [
             cfg.BACKBONE,
-            pretrained=True,
-            num_classes=0,  # remove classifier head, get features
-        )
+            "vit_small_patch14_dinov2.lvd142m",
+            "vit_small_patch14_dinov2",
+        ]
+        for name in candidates:
+            try:
+                self.backbone = timm.create_model(name, pretrained=True, num_classes=0)
+                print(f"  Successfully loaded backbone via timm: {name}")
+                backbone_loaded = True
+                break
+            except Exception:
+                continue
+
+        if not backbone_loaded:
+            print("  Falling back to torch.hub for DINOv2 (dinov2_vits14)...")
+            self.backbone = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
 
         # Projection
         self.projector = nn.Sequential(
