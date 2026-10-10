@@ -39,9 +39,12 @@ from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 try:
     from torch.amp import autocast as _torch_autocast, GradScaler as _torch_scaler
     def autocast_ctx():
-        return _torch_autocast(device_type="cuda")
+        return _torch_autocast("cuda")
     def make_scaler():
-        return _torch_scaler(device_type="cuda")
+        try:
+            return _torch_scaler("cuda")
+        except Exception:
+            return _torch_scaler()
 except Exception:
     from torch.cuda.amp import autocast as _legacy_autocast, GradScaler as _legacy_scaler
     def autocast_ctx():
