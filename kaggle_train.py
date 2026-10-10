@@ -78,21 +78,21 @@ class Config:
     PROJ_DIM = 256
 
     # ArcFace
-    ARCFACE_S = 30.0
-    ARCFACE_M = 0.35
+    ARCFACE_S = 32.0
+    ARCFACE_M = 0.25  # Softer margin to prevent overconfidence on synthetic data
     NUM_CLASSES = 2  # bonafide vs morph
 
     # Training
     IMG_SIZE = 224
     BATCH_SIZE = 64
     NUM_WORKERS = 2
-    WARMUP_EPOCHS = 3
-    TOTAL_EPOCHS = 10
+    WARMUP_EPOCHS = 6  # 6 full epochs on frozen backbone
+    TOTAL_EPOCHS = 12  # 12 epochs total
     HEAD_LR = 1e-3
     FINETUNE_HEAD_LR = 1e-4
-    FINETUNE_BACKBONE_LR = 1e-5
-    WEIGHT_DECAY = 1e-4
-    UNFREEZE_BLOCKS = 2  # number of last transformer blocks to unfreeze in stage 2
+    FINETUNE_BACKBONE_LR = 1e-6  # Conservative fine-tune rate to preserve DINOv2 generalization
+    WEIGHT_DECAY = 1e-3  # Stronger L2 regularization
+    UNFREEZE_BLOCKS = 1  # Unfreeze only the final block (block 11)
 
     # Validation split
     VAL_FRACTION = 0.2
@@ -117,32 +117,48 @@ def seed_everything(seed: int):
 # Augmentations
 # ---------------------------------------------------------------------------
 
+def make_coarse_dropout(p=0.3):
+    try:
+        return A.CoarseDropout(num_holes_range=(1, 4), hole_height_range=(16, 48), hole_width_range=(16, 48), p=p)
+    except Exception:
+        try:
+            return A.CoarseDropout(max_holes=4, max_height=48, max_width=48, p=p)
+        except Exception:
+            return None
+
+
 def get_train_transforms(img_size: int) -> A.Compose:
-    """Heavy augmentation pipeline matching architecture.md spec."""
-    return A.Compose([
+    """Anti-overfitting augmentation pipeline destroying sensor/generator shortcuts."""
+    cd_drop = make_coarse_dropout(p=0.3)
+    aug_list = [
         A.Resize(img_size, img_size),
         A.HorizontalFlip(p=0.5),
-        # Simulated JPEG compression (quality 20-70)
-        A.ImageCompression(quality_lower=20, quality_upper=70, p=0.5),
-        # Gaussian blur
-        A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.1, 2.0), p=0.3),
-        # Motion blur
-        A.MotionBlur(blur_limit=(3, 7), p=0.2),
-        # Simulated print-scan: downsample + JPEG + noise + upsample
+        # Severe JPEG compression
+        A.ImageCompression(quality_lower=15, quality_upper=85, p=0.6),
+        # Blur
+        A.OneOf([
+            A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.1, 2.5)),
+            A.MotionBlur(blur_limit=(3, 7)),
+        ], p=0.5),
+        # Aggressive print-scan simulation (downsample + JPEG + Gaussian noise + upsample)
         A.Compose([
-            A.Downscale(scale_min=0.4, scale_max=0.6, p=1.0),
-            A.ImageCompression(quality_lower=30, quality_upper=50, p=1.0),
-            A.GaussNoise(var_limit=(5.0, 25.0), p=1.0),
-        ], p=0.2),
-        # Random gamma / brightness
-        A.RandomGamma(gamma_limit=(70, 130), p=0.3),
-        A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.3),
-        # Color jitter
-        A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.3),
-        # Normalize + tensor
+            A.Downscale(scale_min=0.3, scale_max=0.6, p=1.0),
+            A.ImageCompression(quality_lower=20, quality_upper=50, p=1.0),
+            A.GaussNoise(var_limit=(10.0, 35.0), p=1.0),
+        ], p=0.4),
+        # Photometric variation
+        A.RandomGamma(gamma_limit=(60, 140), p=0.4),
+        A.RandomBrightnessContrast(brightness_limit=0.25, contrast_limit=0.25, p=0.4),
+        # Grayscale / desaturation (destroys color hue shortcuts, forces structural analysis)
+        A.ToGray(p=0.2),
+    ]
+    if cd_drop is not None:
+        aug_list.append(cd_drop)
+    aug_list.extend([
         A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         ToTensorV2(),
     ])
+    return A.Compose(aug_list)
 
 
 def get_val_transforms(img_size: int) -> A.Compose:
@@ -358,9 +374,14 @@ class MorphDetector(nn.Module):
             print("  Falling back to torch.hub for DINOv2 (dinov2_vits14)...")
             self.backbone = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
 
-        # Projection
+        # Multi-scale feature dimension: CLS (384) + Patch Mean (384) + Patch Std (384) + Patch Max (384)
+        in_dim = cfg.EMBED_DIM * 4
         self.projector = nn.Sequential(
-            nn.Linear(cfg.EMBED_DIM, cfg.PROJ_DIM),
+            nn.Linear(in_dim, 512),
+            nn.BatchNorm1d(512),
+            nn.GELU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, cfg.PROJ_DIM),
             nn.BatchNorm1d(cfg.PROJ_DIM),
         )
 
@@ -389,8 +410,25 @@ class MorphDetector(nn.Module):
                 param.requires_grad = True
 
     def forward(self, x, labels=None, return_scores=False):
-        features = self.backbone(x)  # (B, EMBED_DIM)
-        proj = self.projector(features)  # (B, PROJ_DIM)
+        # Extract patch and CLS tokens from backbone
+        if hasattr(self.backbone, "forward_features"):
+            tokens = self.backbone.forward_features(x)
+            if tokens.dim() == 3 and tokens.size(1) > 1:
+                cls_token = tokens[:, 0]
+                patches = tokens[:, 1:]
+                patch_mean = patches.mean(dim=1)
+                patch_std = patches.std(dim=1)
+                patch_max = patches.max(dim=1).values
+                features = torch.cat([cls_token, patch_mean, patch_std, patch_max], dim=1)
+            elif tokens.dim() == 2:
+                features = tokens.repeat(1, 4)
+            else:
+                features = tokens[:, 0].repeat(1, 4)
+        else:
+            cls_token = self.backbone(x)
+            features = cls_token.repeat(1, 4)
+
+        proj = self.projector(features)
         if return_scores:
             logits = self.arc_head(proj, labels=None)
             probs = F.softmax(logits, dim=1)
@@ -411,48 +449,40 @@ def compute_eer(labels: np.ndarray, scores: np.ndarray):
     """Compute Equal Error Rate from labels and scores."""
     fpr, tpr, thresholds = roc_curve(labels, scores)
     fnr = 1 - tpr
-    # Find the point where FPR ~ FNR
     idx = np.nanargmin(np.abs(fpr - fnr))
-    eer = (fpr[idx] + fnr[idx]) / 2.0
-    return eer, thresholds[idx]
+    eer = float((fpr[idx] + fnr[idx]) / 2.0)
+    thresh = float(thresholds[idx]) if idx < len(thresholds) else 0.5
+    return eer, thresh
 
 
 def compute_bpcer_at_apcer(labels: np.ndarray, scores: np.ndarray, apcer_target: float):
     """
-    Compute BPCER at a fixed APCER threshold.
-
-    APCER = fraction of attacks misclassified as bonafide (FNR on attacks).
-    BPCER = fraction of bonafide misclassified as attacks (FPR on bonafide).
-
+    Compute BPCER at a fixed APCER target threshold (ISO/IEC 30107-3).
+    APCER (Attack Presentation Classification Error Rate) = false accept rate on morphs (scores < threshold).
+    BPCER (Bona Fide Presentation Classification Error Rate) = false reject rate on bonafide (scores >= threshold).
     Higher score = more likely morph.
     """
     attack_scores = scores[labels == 1]
     bonafide_scores = scores[labels == 0]
 
-    # Sort thresholds: we want to find the threshold where APCER <= apcer_target
-    thresholds = np.sort(np.unique(scores))
+    if len(attack_scores) == 0 or len(bonafide_scores) == 0:
+        return 1.0, 0.5
 
-    best_bpcer = 1.0
-    for t in thresholds:
-        # Attacks classified as bonafide (score < threshold): APCER
-        apcer = np.mean(attack_scores < t)
-        # Bonafide classified as attack (score >= threshold): BPCER
-        bpcer = np.mean(bonafide_scores >= t)
+    # Threshold where at most apcer_target of attacks are misclassified as bonafide (score < threshold)
+    threshold = float(np.quantile(attack_scores, apcer_target))
 
-        if apcer <= apcer_target:
-            best_bpcer = bpcer
-            break
-
-    return best_bpcer
+    # BPCER is the fraction of bonafide falsely flagged as morphs (score >= threshold)
+    bpcer = float(np.mean(bonafide_scores >= threshold))
+    return bpcer, threshold
 
 
 def compute_all_metrics(labels: np.ndarray, scores: np.ndarray) -> dict:
     """Compute EER, BPCER@APCER=1%, BPCER@APCER=5%, and ROC-AUC."""
     eer, eer_thresh = compute_eer(labels, scores)
-    bpcer_1 = compute_bpcer_at_apcer(labels, scores, apcer_target=0.01)
-    bpcer_5 = compute_bpcer_at_apcer(labels, scores, apcer_target=0.05)
+    bpcer_1, thresh_1 = compute_bpcer_at_apcer(labels, scores, apcer_target=0.01)
+    bpcer_5, thresh_5 = compute_bpcer_at_apcer(labels, scores, apcer_target=0.05)
     try:
-        auc = roc_auc_score(labels, scores)
+        auc = float(roc_auc_score(labels, scores))
     except ValueError:
         auc = float("nan")
     return {
@@ -514,11 +544,19 @@ def validate(model, loader, device):
     model.eval()
     all_labels = []
     all_scores = []
+    total_loss = 0.0
+    total_count = 0
 
     for images, labels in loader:
         images = images.to(device, non_blocking=True)
+        labels_dev = labels.to(device, non_blocking=True)
         with autocast_ctx():
-            scores = model(images, return_scores=True)
+            logits = model(images, labels=None)
+            loss = F.cross_entropy(logits, labels_dev)
+            scores = F.softmax(logits, dim=1)[:, 1]
+
+        total_loss += loss.item() * images.size(0)
+        total_count += images.size(0)
         all_scores.append(scores.cpu().numpy())
         all_labels.append(labels.numpy())
 
@@ -526,6 +564,7 @@ def validate(model, loader, device):
     all_scores = np.concatenate(all_scores)
 
     metrics = compute_all_metrics(all_labels, all_scores)
+    metrics["val_loss"] = total_loss / max(1, total_count)
     return metrics, all_labels, all_scores
 
 
@@ -570,7 +609,7 @@ def train(cfg: Config):
     raw_model = MorphDetector(cfg).to(cfg.DEVICE)
     raw_model.freeze_backbone()
     print(f"  Backbone: {cfg.BACKBONE} (frozen)")
-    print(f"  Projection: {cfg.EMBED_DIM} -> {cfg.PROJ_DIM}")
+    print(f"  Projection: {cfg.EMBED_DIM}*4 -> {cfg.PROJ_DIM}")
     print(f"  ArcFace: s={cfg.ARCFACE_S}, m={cfg.ARCFACE_M}")
 
     trainable = sum(p.numel() for p in raw_model.parameters() if p.requires_grad)
@@ -584,10 +623,11 @@ def train(cfg: Config):
 
     scaler = make_scaler()
     best_eer = 1.0
+    best_loss = 999.0
     history = []
 
     # ---- Stage 1: Head warm-up ----
-    print("\n[3/5] Stage 1: Head warm-up...")
+    print("\n[3/5] Stage 1: Head warm-up (Backbone Frozen)...")
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, raw_model.parameters()),
         lr=cfg.HEAD_LR, weight_decay=cfg.WEIGHT_DECAY,
@@ -596,24 +636,31 @@ def train(cfg: Config):
     for epoch in range(1, cfg.WARMUP_EPOCHS + 1):
         train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, scaler, cfg.DEVICE, epoch)
         val_metrics, _, _ = validate(model, val_loader, cfg.DEVICE)
-        print(f"  Epoch {epoch}: loss={train_loss:.4f} acc={train_acc:.4f} | "
-              f"val_EER={val_metrics['EER']:.4f} val_AUC={val_metrics['ROC-AUC']:.4f}")
+        print(f"  Epoch {epoch:2d}: loss={train_loss:.4f} acc={train_acc:.4f} | "
+              f"val_EER={val_metrics['EER']:.4f} val_loss={val_metrics['val_loss']:.4f} val_AUC={val_metrics['ROC-AUC']:.4f}")
         history.append({"epoch": epoch, "stage": 1, "train_loss": train_loss,
                         "train_acc": train_acc, **val_metrics})
 
+        is_best = False
+        val_l = val_metrics["val_loss"]
         if val_metrics["EER"] < best_eer:
+            is_best = True
+        elif abs(val_metrics["EER"] - best_eer) < 1e-6 and val_l < best_loss:
+            is_best = True
+
+        if is_best:
             best_eer = val_metrics["EER"]
+            best_loss = val_l
             torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "best_model.pt"))
-            print(f"    -> New best EER: {best_eer:.4f}")
+            print(f"    -> New best model saved (EER: {best_eer:.4f}, val_loss: {best_loss:.4f})")
 
     # ---- Stage 2: Differential fine-tuning ----
-    print(f"\n[4/5] Stage 2: Unfreezing last {cfg.UNFREEZE_BLOCKS} blocks...")
+    print(f"\n[4/5] Stage 2: Differential fine-tuning (Unfreezing last {cfg.UNFREEZE_BLOCKS} block)...")
     raw_model.unfreeze_last_n_blocks(cfg.UNFREEZE_BLOCKS)
 
     trainable = sum(p.numel() for p in raw_model.parameters() if p.requires_grad)
     print(f"  Trainable: {trainable:,} / {total_params:,} parameters")
 
-    # Differential LR: backbone params get lower LR
     backbone_params = []
     head_params = []
     for name, param in raw_model.named_parameters():
@@ -630,23 +677,32 @@ def train(cfg: Config):
     ], weight_decay=cfg.WEIGHT_DECAY)
 
     total_ft_epochs = cfg.TOTAL_EPOCHS - cfg.WARMUP_EPOCHS
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_ft_epochs)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_ft_epochs, eta_min=1e-7)
 
     for epoch in range(cfg.WARMUP_EPOCHS + 1, cfg.TOTAL_EPOCHS + 1):
         train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, scaler, cfg.DEVICE, epoch)
         scheduler.step()
         val_metrics, _, _ = validate(model, val_loader, cfg.DEVICE)
-        print(f"  Epoch {epoch}: loss={train_loss:.4f} acc={train_acc:.4f} | "
-              f"val_EER={val_metrics['EER']:.4f} val_AUC={val_metrics['ROC-AUC']:.4f}")
+        print(f"  Epoch {epoch:2d}: loss={train_loss:.4f} acc={train_acc:.4f} | "
+              f"val_EER={val_metrics['EER']:.4f} val_loss={val_metrics['val_loss']:.4f} val_AUC={val_metrics['ROC-AUC']:.4f}")
         history.append({"epoch": epoch, "stage": 2, "train_loss": train_loss,
                         "train_acc": train_acc, **val_metrics})
 
+        is_best = False
+        val_l = val_metrics["val_loss"]
         if val_metrics["EER"] < best_eer:
-            best_eer = val_metrics["EER"]
-            torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "best_model.pt"))
-            print(f"    -> New best EER: {best_eer:.4f}")
+            is_best = True
+        elif abs(val_metrics["EER"] - best_eer) < 1e-6 and val_l < best_loss:
+            is_best = True
 
-    # Save training history
+        if is_best:
+            best_eer = val_metrics["EER"]
+            best_loss = val_l
+            torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "best_model.pt"))
+            print(f"    -> New best model saved (EER: {best_eer:.4f}, val_loss: {best_loss:.4f})")
+
+    # Save final model and training history
+    torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "final_model.pt"))
     pd.DataFrame(history).to_csv(os.path.join(cfg.OUTPUT_DIR, "training_history.csv"), index=False)
     print(f"\n  Training complete. Best validation EER: {best_eer:.4f}")
 
