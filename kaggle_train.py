@@ -35,7 +35,19 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
-from torch.cuda.amp import autocast, GradScaler
+
+try:
+    from torch.amp import autocast as _torch_autocast, GradScaler as _torch_scaler
+    def autocast_ctx():
+        return _torch_autocast(device_type="cuda")
+    def make_scaler():
+        return _torch_scaler(device_type="cuda")
+except Exception:
+    from torch.cuda.amp import autocast as _legacy_autocast, GradScaler as _legacy_scaler
+    def autocast_ctx():
+        return _legacy_autocast()
+    def make_scaler():
+        return _legacy_scaler()
 
 import timm
 from sklearn.metrics import roc_auc_score, roc_curve
@@ -332,8 +344,8 @@ class MorphDetector(nn.Module):
         ]
         for name in candidates:
             try:
-                self.backbone = timm.create_model(name, pretrained=True, num_classes=0)
-                print(f"  Successfully loaded backbone via timm: {name}")
+                self.backbone = timm.create_model(name, pretrained=True, num_classes=0, dynamic_img_size=True)
+                print(f"  Successfully loaded backbone via timm: {name} (dynamic_img_size=True)")
                 backbone_loaded = True
                 break
             except Exception:
@@ -474,7 +486,7 @@ def train_one_epoch(model, loader, optimizer, scaler, device, epoch):
 
         optimizer.zero_grad(set_to_none=True)
 
-        with autocast():
+        with autocast_ctx():
             logits = model(images, labels)
             loss = F.cross_entropy(logits, labels)
 
@@ -502,7 +514,7 @@ def validate(model, loader, device):
 
     for images, labels in loader:
         images = images.to(device, non_blocking=True)
-        with autocast():
+        with autocast_ctx():
             scores = model(images, return_scores=True)
         all_scores.append(scores.cpu().numpy())
         all_labels.append(labels.numpy())
@@ -567,7 +579,7 @@ def train(cfg: Config):
         print(f"  Enabling nn.DataParallel across {num_gpus} GPUs.")
         model = nn.DataParallel(raw_model)
 
-    scaler = GradScaler()
+    scaler = make_scaler()
     best_eer = 1.0
     history = []
 
