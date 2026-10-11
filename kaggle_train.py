@@ -491,8 +491,20 @@ class MorphDetector(nn.Module):
             nn.BatchNorm1d(cfg.PROJ_DIM),
         )
 
-        # ---- ArcFace Classification Head ----
-        self.arc_head = ArcFaceHead(
+        # ---- Multi-Branch ArcFace Classification Heads ----
+        self.spatial_head = ArcFaceHead(
+            in_features=cfg.SPATIAL_DIM,
+            num_classes=cfg.NUM_CLASSES,
+            s=cfg.ARCFACE_S,
+            m=cfg.ARCFACE_M,
+        )
+        self.freq_head = ArcFaceHead(
+            in_features=cfg.FREQ_DIM,
+            num_classes=cfg.NUM_CLASSES,
+            s=cfg.ARCFACE_S,
+            m=cfg.ARCFACE_M,
+        )
+        self.fused_head = ArcFaceHead(
             in_features=cfg.PROJ_DIM,
             num_classes=cfg.NUM_CLASSES,
             s=cfg.ARCFACE_S,
@@ -533,20 +545,37 @@ class MorphDetector(nn.Module):
             spatial_feat = cls_token.repeat(1, 4)
 
         z_spatial = self.spatial_projector(spatial_feat)  # (B, SPATIAL_DIM)
-
-        # Stream B (Frequency Residual): Noise and spectral artifacts
-        z_freq = self.freq_stream(x)  # (B, FREQ_DIM)
-
-        # Dual-Stream Fusion
+        z_freq = self.freq_stream(x)                      # (B, FREQ_DIM)
         z_fused = torch.cat([z_spatial, z_freq], dim=1)  # (B, SPATIAL_DIM + FREQ_DIM)
-        proj = self.fusion(z_fused)  # (B, PROJ_DIM)
+        proj = self.fusion(z_fused)                       # (B, PROJ_DIM)
 
-        if return_scores:
-            logits = self.arc_head(proj, labels=None)
-            probs = F.softmax(logits, dim=1)
-            return probs[:, 1]  # morph class probability
-        logits = self.arc_head(proj, labels)  # (B, NUM_CLASSES)
-        return logits
+        if labels is not None:
+            # Training: Supervise spatial, frequency, and fusion streams independently
+            logits_fused = self.fused_head(proj, labels)
+            logits_spatial = self.spatial_head(z_spatial, labels)
+            logits_freq = self.freq_head(z_freq, labels)
+            return logits_fused, logits_spatial, logits_freq
+        else:
+            # Inference / Validation: Max anomaly OR-gate
+            logits_s = self.spatial_head(z_spatial, labels=None)
+            logits_f = self.freq_head(z_freq, labels=None)
+            logits_fuse = self.fused_head(proj, labels=None)
+
+            p_s = F.softmax(logits_s, dim=1)[:, 1]
+            p_f = F.softmax(logits_f, dim=1)[:, 1]
+            p_fuse = F.softmax(logits_fuse, dim=1)[:, 1]
+
+            # Detects attack if EITHER spatial seam OR frequency artifact is triggered
+            p_ensemble = torch.maximum(p_s, torch.maximum(p_f, p_fuse))
+
+            if return_scores:
+                return p_ensemble
+
+            # Construct calibrated logits matching p_ensemble so validate() remains uniform
+            eps = 1e-6
+            p_clamped = torch.clamp(p_ensemble, eps, 1.0 - eps)
+            logit_val = torch.log(p_clamped / (1.0 - p_clamped))
+            return torch.stack([-logit_val / 2.0, logit_val / 2.0], dim=1)
 
     def get_scores(self, x):
         """Inference: return morph probability scores."""
@@ -637,15 +666,18 @@ def train_one_epoch(model, loader, optimizer, scaler, device, epoch, start_time,
         optimizer.zero_grad(set_to_none=True)
 
         with autocast_ctx():
-            logits = model(images, labels)
-            loss = F.cross_entropy(logits, labels)
+            logits_fused, logits_s, logits_f = model(images, labels)
+            loss_fuse = F.cross_entropy(logits_fused, labels)
+            loss_s = F.cross_entropy(logits_s, labels)
+            loss_f = F.cross_entropy(logits_f, labels)
+            loss = loss_fuse + 0.5 * loss_s + 0.5 * loss_f
 
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
 
         total_loss += loss.item() * images.size(0)
-        preds = logits.argmax(dim=1)
+        preds = logits_fused.argmax(dim=1)
         correct += (preds == labels).sum().item()
         total += images.size(0)
 
