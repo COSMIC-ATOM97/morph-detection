@@ -1,15 +1,19 @@
 """
-DINO-Branch Morph Attack Detection -- Kaggle Training & Evaluation Script
-=========================================================================
-Single-file, self-contained implementation.
+Dual-Stream UID-MAD (Phase 2): Spatial DINOv2 + Frequency Residual
+===================================================================
+Self-contained Kaggle Training & Cross-Dataset Evaluation Script.
+
+Architecture:
+  - Stream A (Spatial): DINOv2 ViT-S/14 Dense Patch Statistics (1536 -> 256-d)
+  - Stream B (Frequency): Laplacian High-Pass Residual ConvNet (128-d)
+  - Fusion: Concat(256 + 128) -> Linear/BN/GELU/Dropout (256-d)
+  - Classification: Additive Angular Margin Head (ArcFace: s=32.0, m=0.25)
 
 Usage on Kaggle:
-    1. Upload SMDD and FRLL-Morphs as Kaggle Datasets.
-    2. Paste this file into a Code cell and run.
-    3. Results are written to /kaggle/working/.
-
-Requires (all pre-installed on Kaggle):
-    torch, torchvision, timm, albumentations, scikit-learn, matplotlib, pandas
+    1. Select Accelerator: GPU T4 x2.
+    2. Paste this script into a notebook cell.
+    3. Run interactively or click 'Save Version' -> 'Save & Run All (Commit)'.
+    4. Outputs are saved to /kaggle/working/ (frll_results.csv, best_model.pt, roc_*.png).
 """
 
 import os
@@ -96,10 +100,12 @@ class Config:
     FRLL_ZIP = "/kaggle/input/frll-morphs/drive-download-20261010T174433Z-1-001.zip"
     OUTPUT_DIR = "/kaggle/working"
 
-    # Backbone
+    # Backbone & Dual-Stream Dimensions
     BACKBONE = "vit_small_patch14_dinov2.lvd142m"  # timm model name
-    EMBED_DIM = 384  # 384 for ViT-S, 768 for ViT-B
-    PROJ_DIM = 256
+    EMBED_DIM = 384  # 384 for ViT-S
+    SPATIAL_DIM = 256  # Stream A spatial embedding dimension
+    FREQ_DIM = 128     # Stream B frequency residual embedding dimension
+    PROJ_DIM = 256     # Fused projection dimension
 
     # ArcFace
     ARCFACE_S = 32.0
@@ -109,10 +115,10 @@ class Config:
     # Training
     IMG_SIZE = 224
     BATCH_SIZE = 64
-    NUM_WORKERS = 0  # 0 workers completely eliminates multiprocessing IPC deadlocks on Kaggle
-    PIN_MEMORY = False  # Avoids CUDA allocator deadlocks in multithreading
-    WARMUP_EPOCHS = 4  # 4 epochs head warmup on frozen backbone (~6-7 min)
-    TOTAL_EPOCHS = 8  # 8 epochs total (4 warmup + 4 fine-tune, ~13-14 min)
+    NUM_WORKERS = 0  # 0 workers eliminates multiprocessing IPC deadlocks on Kaggle
+    PIN_MEMORY = False  # Avoids CUDA allocator deadlocks
+    WARMUP_EPOCHS = 4  # 4 epochs head + frequency encoder training (~8-10 min)
+    TOTAL_EPOCHS = 6  # 6 epochs total (4 warmup + 2 differential fine-tuning, ~14 min)
     HEAD_LR = 1e-3
     FINETUNE_HEAD_LR = 1e-4
     FINETUNE_BACKBONE_LR = 1e-6  # Conservative fine-tune rate to preserve DINOv2 generalization
@@ -154,29 +160,26 @@ def make_coarse_dropout(p=0.3):
 
 
 def get_train_transforms(img_size: int) -> A.Compose:
-    """Anti-overfitting augmentation pipeline destroying sensor/generator shortcuts."""
-    cd_drop = make_coarse_dropout(p=0.3)
+    """Fast, anti-overfitting augmentation pipeline destroying sensor/generator shortcuts."""
+    cd_drop = make_coarse_dropout(p=0.2)
     aug_list = [
         A.Resize(img_size, img_size),
         A.HorizontalFlip(p=0.5),
-        # Severe JPEG compression
-        A.ImageCompression(quality_lower=15, quality_upper=85, p=0.6),
-        # Blur
+        # Mutually exclusive heavy degradation to keep CPU decode time under 6ms
         A.OneOf([
-            A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.1, 2.5)),
-            A.MotionBlur(blur_limit=(3, 7)),
-        ], p=0.5),
-        # Aggressive print-scan simulation (downsample + JPEG + Gaussian noise + upsample)
-        A.Compose([
-            A.Downscale(scale_min=0.3, scale_max=0.6, p=1.0),
-            A.ImageCompression(quality_lower=20, quality_upper=50, p=1.0),
-            A.GaussNoise(var_limit=(10.0, 35.0), p=1.0),
-        ], p=0.4),
+            A.ImageCompression(quality_lower=20, quality_upper=80, p=1.0),
+            A.GaussianBlur(blur_limit=(3, 5), sigma_limit=(0.1, 2.0), p=1.0),
+            A.MotionBlur(blur_limit=(3, 5), p=1.0),
+            A.Compose([
+                A.Downscale(scale_min=0.4, scale_max=0.7, p=1.0),
+                A.GaussNoise(var_limit=(10.0, 30.0), p=1.0),
+            ], p=1.0),
+        ], p=0.7),
         # Photometric variation
-        A.RandomGamma(gamma_limit=(60, 140), p=0.4),
-        A.RandomBrightnessContrast(brightness_limit=0.25, contrast_limit=0.25, p=0.4),
-        # Grayscale / desaturation (destroys color hue shortcuts, forces structural analysis)
-        A.ToGray(p=0.2),
+        A.RandomGamma(gamma_limit=(70, 130), p=0.3),
+        A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.3),
+        # Grayscale (destroys color hue shortcuts, forces structural & frequency analysis)
+        A.ToGray(p=0.15),
     ]
     if cd_drop is not None:
         aug_list.append(cd_drop)
@@ -373,14 +376,77 @@ class ArcFaceHead(nn.Module):
         return logits
 
 
+class FrequencyResidualStream(nn.Module):
+    """
+    Stream B: High-pass Laplacian residual filter + Multi-scale Conv encoder.
+    Isolates generator noise, checkerboard upsampling artifacts, and frequency anomalies.
+    """
+
+    def __init__(self, out_dim: int = 128):
+        super().__init__()
+        # Fixed 3x3 Laplacian high-pass filter (depthwise, non-trainable)
+        kernel = torch.tensor([
+            [-1., -1., -1.],
+            [-1.,  8., -1.],
+            [-1., -1., -1.]
+        ], dtype=torch.float32) / 8.0
+        weight = kernel.view(1, 1, 3, 3).repeat(3, 1, 1, 1)
+        self.hp_filter = nn.Conv2d(3, 3, kernel_size=3, padding=1, bias=False, groups=3)
+        self.hp_filter.weight = nn.Parameter(weight, requires_grad=False)
+
+        # Lightweight 4-stage convolutional encoder: 224 -> 112 -> 56 -> 28 -> 14
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(32),
+            nn.GELU(),
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.GELU(),
+        )
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.GELU(),
+        )
+        self.conv4 = nn.Sequential(
+            nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.GELU(),
+        )
+
+        self.pool_avg = nn.AdaptiveAvgPool2d(1)
+        self.pool_max = nn.AdaptiveMaxPool2d(1)
+
+        self.proj = nn.Sequential(
+            nn.Linear(256, out_dim),
+            nn.BatchNorm1d(out_dim),
+            nn.GELU(),
+        )
+
+    def forward(self, x):
+        # Extract high-pass residual on GPU
+        res = self.hp_filter(x)
+        c1 = self.conv1(res)
+        c2 = self.conv2(c1)
+        c3 = self.conv3(c2)
+        c4 = self.conv4(c3)
+
+        avg_p = self.pool_avg(c4).flatten(1)
+        max_p = self.pool_max(c4).flatten(1)
+        pooled = torch.cat([avg_p, max_p], dim=1)  # (B, 256)
+        return self.proj(pooled)  # (B, out_dim)
+
+
 class MorphDetector(nn.Module):
-    """DINOv2 backbone + projection + ArcFace head."""
+    """UID-MAD Dual-Stream Detector: Stream A (DINOv2 Spatial) + Stream B (Frequency Residual)."""
 
     def __init__(self, cfg: Config):
         super().__init__()
         self.cfg = cfg
 
-        # Load backbone (try timm variants, fallback to torch.hub)
+        # ---- Stream A: Spatial Backbone (DINOv2) ----
         backbone_loaded = False
         candidates = [
             cfg.BACKBONE,
@@ -390,28 +456,42 @@ class MorphDetector(nn.Module):
         for name in candidates:
             try:
                 self.backbone = timm.create_model(name, pretrained=True, num_classes=0, dynamic_img_size=True)
-                print(f"  Successfully loaded backbone via timm: {name} (dynamic_img_size=True)")
+                print(f"  Successfully loaded backbone via timm: {name} (dynamic_img_size=True)", flush=True)
                 backbone_loaded = True
                 break
             except Exception:
                 continue
 
         if not backbone_loaded:
-            print("  Falling back to torch.hub for DINOv2 (dinov2_vits14)...")
+            print("  Falling back to torch.hub for DINOv2 (dinov2_vits14)...", flush=True)
             self.backbone = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
 
-        # Multi-scale feature dimension: CLS (384) + Patch Mean (384) + Patch Std (384) + Patch Max (384)
+        # Multi-scale patch feature dimension: CLS (384) + Mean (384) + Std (384) + Max (384) = 1536
         in_dim = cfg.EMBED_DIM * 4
-        self.projector = nn.Sequential(
+        self.spatial_projector = nn.Sequential(
             nn.Linear(in_dim, 512),
             nn.BatchNorm1d(512),
             nn.GELU(),
             nn.Dropout(0.3),
-            nn.Linear(512, cfg.PROJ_DIM),
+            nn.Linear(512, cfg.SPATIAL_DIM),
+            nn.BatchNorm1d(cfg.SPATIAL_DIM),
+        )
+
+        # ---- Stream B: Frequency Residual Stream ----
+        self.freq_stream = FrequencyResidualStream(out_dim=cfg.FREQ_DIM)
+
+        # ---- Dual-Stream Fusion Head ----
+        fused_dim = cfg.SPATIAL_DIM + cfg.FREQ_DIM
+        self.fusion = nn.Sequential(
+            nn.Linear(fused_dim, cfg.PROJ_DIM),
+            nn.BatchNorm1d(cfg.PROJ_DIM),
+            nn.GELU(),
+            nn.Dropout(0.2),
+            nn.Linear(cfg.PROJ_DIM, cfg.PROJ_DIM),
             nn.BatchNorm1d(cfg.PROJ_DIM),
         )
 
-        # ArcFace head
+        # ---- ArcFace Classification Head ----
         self.arc_head = ArcFaceHead(
             in_features=cfg.PROJ_DIM,
             num_classes=cfg.NUM_CLASSES,
@@ -425,18 +505,16 @@ class MorphDetector(nn.Module):
 
     def unfreeze_last_n_blocks(self, n: int):
         """Unfreeze the last n transformer blocks of the ViT."""
-        # timm DINOv2 stores blocks in self.backbone.blocks
         blocks = list(self.backbone.blocks)
         for block in blocks[-n:]:
             for param in block.parameters():
                 param.requires_grad = True
-        # Also unfreeze the final norm layer
         if hasattr(self.backbone, "norm"):
             for param in self.backbone.norm.parameters():
                 param.requires_grad = True
 
     def forward(self, x, labels=None, return_scores=False):
-        # Extract patch and CLS tokens from backbone
+        # Stream A (Spatial): Multi-scale patch statistics
         if hasattr(self.backbone, "forward_features"):
             tokens = self.backbone.forward_features(x)
             if tokens.dim() == 3 and tokens.size(1) > 1:
@@ -445,16 +523,24 @@ class MorphDetector(nn.Module):
                 patch_mean = patches.mean(dim=1)
                 patch_std = patches.std(dim=1)
                 patch_max = patches.max(dim=1).values
-                features = torch.cat([cls_token, patch_mean, patch_std, patch_max], dim=1)
+                spatial_feat = torch.cat([cls_token, patch_mean, patch_std, patch_max], dim=1)
             elif tokens.dim() == 2:
-                features = tokens.repeat(1, 4)
+                spatial_feat = tokens.repeat(1, 4)
             else:
-                features = tokens[:, 0].repeat(1, 4)
+                spatial_feat = tokens[:, 0].repeat(1, 4)
         else:
             cls_token = self.backbone(x)
-            features = cls_token.repeat(1, 4)
+            spatial_feat = cls_token.repeat(1, 4)
 
-        proj = self.projector(features)
+        z_spatial = self.spatial_projector(spatial_feat)  # (B, SPATIAL_DIM)
+
+        # Stream B (Frequency Residual): Noise and spectral artifacts
+        z_freq = self.freq_stream(x)  # (B, FREQ_DIM)
+
+        # Dual-Stream Fusion
+        z_fused = torch.cat([z_spatial, z_freq], dim=1)  # (B, SPATIAL_DIM + FREQ_DIM)
+        proj = self.fusion(z_fused)  # (B, PROJ_DIM)
+
         if return_scores:
             logits = self.arc_head(proj, labels=None)
             probs = F.softmax(logits, dim=1)
@@ -611,7 +697,7 @@ def train(cfg: Config):
     effective_bs = cfg.BATCH_SIZE * max(1, num_gpus)
 
     print("=" * 60, flush=True)
-    print("DINO-Branch Morph Attack Detection -- Training", flush=True)
+    print("Dual-Stream UID-MAD (Spatial + Frequency) -- Training", flush=True)
     print(f"  Available GPUs: {num_gpus} | Effective Batch Size: {effective_bs}", flush=True)
     print(f"  Max Runtime Guard: {cfg.MAX_RUNTIME_MINUTES} minutes", flush=True)
     print("=" * 60, flush=True)
@@ -647,9 +733,10 @@ def train(cfg: Config):
     print("\n[2/5] Building model...", flush=True)
     raw_model = MorphDetector(cfg).to(cfg.DEVICE)
     raw_model.freeze_backbone()
-    print(f"  Backbone: {cfg.BACKBONE} (frozen)", flush=True)
-    print(f"  Projection: {cfg.EMBED_DIM}*4 -> {cfg.PROJ_DIM}", flush=True)
-    print(f"  ArcFace: s={cfg.ARCFACE_S}, m={cfg.ARCFACE_M}", flush=True)
+    print(f"  Stream A (Spatial): {cfg.BACKBONE} (frozen)", flush=True)
+    print(f"  Stream B (Frequency): Laplacian residual ConvNet -> {cfg.FREQ_DIM}-d", flush=True)
+    print(f"  Dual Fusion: Concat({cfg.SPATIAL_DIM} + {cfg.FREQ_DIM}) -> {cfg.PROJ_DIM}-d", flush=True)
+    print(f"  ArcFace Head: s={cfg.ARCFACE_S}, m={cfg.ARCFACE_M}", flush=True)
 
     trainable = sum(p.numel() for p in raw_model.parameters() if p.requires_grad)
     total_params = sum(p.numel() for p in raw_model.parameters())
