@@ -13,6 +13,30 @@ Requires (all pre-installed on Kaggle):
 """
 
 import os
+import sys
+import time
+
+# Force line buffering on standard outputs so logs appear immediately
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True)
+
+# Prevent OpenCV and OpenMP worker deadlocks in PyTorch DataLoader
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["PYTHONUNBUFFERED"] = "1"
+
+try:
+    import cv2
+    cv2.setNumThreads(0)
+    cv2.ocl.setUseOpenCL(False)
+except Exception:
+    pass
+
 import io
 import csv
 import math
@@ -85,14 +109,16 @@ class Config:
     # Training
     IMG_SIZE = 224
     BATCH_SIZE = 64
-    NUM_WORKERS = 2
-    WARMUP_EPOCHS = 6  # 6 full epochs on frozen backbone
-    TOTAL_EPOCHS = 12  # 12 epochs total
+    NUM_WORKERS = 0  # 0 workers completely eliminates multiprocessing IPC deadlocks on Kaggle
+    PIN_MEMORY = False  # Avoids CUDA allocator deadlocks in multithreading
+    WARMUP_EPOCHS = 4  # 4 epochs head warmup on frozen backbone (~6-7 min)
+    TOTAL_EPOCHS = 8  # 8 epochs total (4 warmup + 4 fine-tune, ~13-14 min)
     HEAD_LR = 1e-3
     FINETUNE_HEAD_LR = 1e-4
     FINETUNE_BACKBONE_LR = 1e-6  # Conservative fine-tune rate to preserve DINOv2 generalization
     WEIGHT_DECAY = 1e-3  # Stronger L2 regularization
     UNFREEZE_BLOCKS = 1  # Unfreeze only the final block (block 11)
+    MAX_RUNTIME_MINUTES = 30  # Hard safety ceiling: exits cleanly if training ever exceeds 30m
 
     # Validation split
     VAL_FRACTION = 0.2
@@ -507,13 +533,18 @@ def build_sampler(entries: list) -> WeightedRandomSampler:
     return WeightedRandomSampler(sample_weights, num_samples=len(entries), replacement=True)
 
 
-def train_one_epoch(model, loader, optimizer, scaler, device, epoch):
+def train_one_epoch(model, loader, optimizer, scaler, device, epoch, start_time, max_runtime_sec):
     model.train()
     total_loss = 0.0
     correct = 0
     total = 0
+    epoch_start = time.time()
 
     for batch_idx, (images, labels) in enumerate(loader):
+        if time.time() - start_time > max_runtime_sec:
+            print(f"  [SAFETY CEILING REACHED] Exiting epoch {epoch} early after {batch_idx} batches.", flush=True)
+            break
+
         images = images.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
 
@@ -532,11 +563,14 @@ def train_one_epoch(model, loader, optimizer, scaler, device, epoch):
         correct += (preds == labels).sum().item()
         total += images.size(0)
 
-        if (batch_idx + 1) % 100 == 0:
-            print(f"  Epoch {epoch} | Batch {batch_idx+1}/{len(loader)} | "
-                  f"Loss: {loss.item():.4f} | Acc: {correct/total:.4f}")
+        if (batch_idx + 1) % 50 == 0 or (batch_idx + 1) == len(loader):
+            elapsed_epoch = time.time() - epoch_start
+            rate = (batch_idx + 1) / max(0.001, elapsed_epoch)
+            print(f"  Epoch {epoch:2d} | Batch {batch_idx+1:3d}/{len(loader)} | "
+                  f"Loss: {loss.item():.4f} | Acc: {correct/max(1, total):.4f} | "
+                  f"{rate:.1f} it/s | Total Elapsed: {(time.time() - start_time)/60:.1f}m", flush=True)
 
-    return total_loss / total, correct / total
+    return total_loss / max(1, total), correct / max(1, total)
 
 
 @torch.no_grad()
@@ -576,13 +610,18 @@ def train(cfg: Config):
     num_gpus = torch.cuda.device_count()
     effective_bs = cfg.BATCH_SIZE * max(1, num_gpus)
 
-    print("=" * 60)
-    print("DINO-Branch Morph Attack Detection -- Training")
-    print(f"  Available GPUs: {num_gpus} | Effective Batch Size: {effective_bs}")
-    print("=" * 60)
+    print("=" * 60, flush=True)
+    print("DINO-Branch Morph Attack Detection -- Training", flush=True)
+    print(f"  Available GPUs: {num_gpus} | Effective Batch Size: {effective_bs}", flush=True)
+    print(f"  Max Runtime Guard: {cfg.MAX_RUNTIME_MINUTES} minutes", flush=True)
+    print("=" * 60, flush=True)
+
+    start_time = time.time()
+    max_runtime_sec = cfg.MAX_RUNTIME_MINUTES * 60
+    timed_out = False
 
     # ---- Data ----
-    print("\n[1/5] Loading SMDD dataset...")
+    print("\n[1/5] Loading SMDD dataset...", flush=True)
     all_entries = load_smdd_entries(cfg.SMDD_ZIP)
     random.shuffle(all_entries)
 
@@ -592,33 +631,33 @@ def train(cfg: Config):
 
     train_labels = [e[1] for e in train_entries]
     val_labels = [e[1] for e in val_entries]
-    print(f"  Train: {len(train_entries)} (bonafide={train_labels.count(0)}, morph={train_labels.count(1)})")
-    print(f"  Val:   {len(val_entries)} (bonafide={val_labels.count(0)}, morph={val_labels.count(1)})")
+    print(f"  Train: {len(train_entries)} (bonafide={train_labels.count(0)}, morph={train_labels.count(1)})", flush=True)
+    print(f"  Val:   {len(val_entries)} (bonafide={val_labels.count(0)}, morph={val_labels.count(1)})", flush=True)
 
     train_ds = SMDDDataset(cfg.SMDD_ZIP, train_entries, transform=get_train_transforms(cfg.IMG_SIZE))
     val_ds = SMDDDataset(cfg.SMDD_ZIP, val_entries, transform=get_val_transforms(cfg.IMG_SIZE))
 
     sampler = build_sampler(train_entries)
     train_loader = DataLoader(train_ds, batch_size=effective_bs, sampler=sampler,
-                              num_workers=cfg.NUM_WORKERS, pin_memory=True, drop_last=True)
+                              num_workers=cfg.NUM_WORKERS, pin_memory=cfg.PIN_MEMORY, drop_last=True)
     val_loader = DataLoader(val_ds, batch_size=effective_bs, shuffle=False,
-                            num_workers=cfg.NUM_WORKERS, pin_memory=True)
+                            num_workers=cfg.NUM_WORKERS, pin_memory=cfg.PIN_MEMORY)
 
     # ---- Model ----
-    print("\n[2/5] Building model...")
+    print("\n[2/5] Building model...", flush=True)
     raw_model = MorphDetector(cfg).to(cfg.DEVICE)
     raw_model.freeze_backbone()
-    print(f"  Backbone: {cfg.BACKBONE} (frozen)")
-    print(f"  Projection: {cfg.EMBED_DIM}*4 -> {cfg.PROJ_DIM}")
-    print(f"  ArcFace: s={cfg.ARCFACE_S}, m={cfg.ARCFACE_M}")
+    print(f"  Backbone: {cfg.BACKBONE} (frozen)", flush=True)
+    print(f"  Projection: {cfg.EMBED_DIM}*4 -> {cfg.PROJ_DIM}", flush=True)
+    print(f"  ArcFace: s={cfg.ARCFACE_S}, m={cfg.ARCFACE_M}", flush=True)
 
     trainable = sum(p.numel() for p in raw_model.parameters() if p.requires_grad)
     total_params = sum(p.numel() for p in raw_model.parameters())
-    print(f"  Trainable: {trainable:,} / {total_params:,} parameters")
+    print(f"  Trainable: {trainable:,} / {total_params:,} parameters", flush=True)
 
     model = raw_model
     if num_gpus > 1:
-        print(f"  Enabling nn.DataParallel across {num_gpus} GPUs.")
+        print(f"  Enabling nn.DataParallel across {num_gpus} GPUs.", flush=True)
         model = nn.DataParallel(raw_model)
 
     scaler = make_scaler()
@@ -627,17 +666,22 @@ def train(cfg: Config):
     history = []
 
     # ---- Stage 1: Head warm-up ----
-    print("\n[3/5] Stage 1: Head warm-up (Backbone Frozen)...")
+    print(f"\n[3/5] Stage 1: Head warm-up (Backbone Frozen, {cfg.WARMUP_EPOCHS} epochs)...", flush=True)
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, raw_model.parameters()),
         lr=cfg.HEAD_LR, weight_decay=cfg.WEIGHT_DECAY,
     )
 
     for epoch in range(1, cfg.WARMUP_EPOCHS + 1):
-        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, scaler, cfg.DEVICE, epoch)
+        if time.time() - start_time > max_runtime_sec:
+            print(f"\n[SAFETY STOP] Max runtime ({cfg.MAX_RUNTIME_MINUTES}m) exceeded. Stopping Stage 1.", flush=True)
+            timed_out = True
+            break
+
+        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, scaler, cfg.DEVICE, epoch, start_time, max_runtime_sec)
         val_metrics, _, _ = validate(model, val_loader, cfg.DEVICE)
         print(f"  Epoch {epoch:2d}: loss={train_loss:.4f} acc={train_acc:.4f} | "
-              f"val_EER={val_metrics['EER']:.4f} val_loss={val_metrics['val_loss']:.4f} val_AUC={val_metrics['ROC-AUC']:.4f}")
+              f"val_EER={val_metrics['EER']:.4f} val_loss={val_metrics['val_loss']:.4f} val_AUC={val_metrics['ROC-AUC']:.4f}", flush=True)
         history.append({"epoch": epoch, "stage": 1, "train_loss": train_loss,
                         "train_acc": train_acc, **val_metrics})
 
@@ -652,59 +696,65 @@ def train(cfg: Config):
             best_eer = val_metrics["EER"]
             best_loss = val_l
             torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "best_model.pt"))
-            print(f"    -> New best model saved (EER: {best_eer:.4f}, val_loss: {best_loss:.4f})")
+            print(f"    -> New best model saved (EER: {best_eer:.4f}, val_loss: {best_loss:.4f})", flush=True)
 
     # ---- Stage 2: Differential fine-tuning ----
-    print(f"\n[4/5] Stage 2: Differential fine-tuning (Unfreezing last {cfg.UNFREEZE_BLOCKS} block)...")
-    raw_model.unfreeze_last_n_blocks(cfg.UNFREEZE_BLOCKS)
+    if not timed_out:
+        print(f"\n[4/5] Stage 2: Differential fine-tuning (Unfreezing last {cfg.UNFREEZE_BLOCKS} block, {cfg.TOTAL_EPOCHS - cfg.WARMUP_EPOCHS} epochs)...", flush=True)
+        raw_model.unfreeze_last_n_blocks(cfg.UNFREEZE_BLOCKS)
 
-    trainable = sum(p.numel() for p in raw_model.parameters() if p.requires_grad)
-    print(f"  Trainable: {trainable:,} / {total_params:,} parameters")
+        trainable = sum(p.numel() for p in raw_model.parameters() if p.requires_grad)
+        print(f"  Trainable: {trainable:,} / {total_params:,} parameters", flush=True)
 
-    backbone_params = []
-    head_params = []
-    for name, param in raw_model.named_parameters():
-        if not param.requires_grad:
-            continue
-        if name.startswith("backbone"):
-            backbone_params.append(param)
-        else:
-            head_params.append(param)
+        backbone_params = []
+        head_params = []
+        for name, param in raw_model.named_parameters():
+            if not param.requires_grad:
+                continue
+            if name.startswith("backbone"):
+                backbone_params.append(param)
+            else:
+                head_params.append(param)
 
-    optimizer = torch.optim.AdamW([
-        {"params": backbone_params, "lr": cfg.FINETUNE_BACKBONE_LR},
-        {"params": head_params, "lr": cfg.FINETUNE_HEAD_LR},
-    ], weight_decay=cfg.WEIGHT_DECAY)
+        optimizer = torch.optim.AdamW([
+            {"params": backbone_params, "lr": cfg.FINETUNE_BACKBONE_LR},
+            {"params": head_params, "lr": cfg.FINETUNE_HEAD_LR},
+        ], weight_decay=cfg.WEIGHT_DECAY)
 
-    total_ft_epochs = cfg.TOTAL_EPOCHS - cfg.WARMUP_EPOCHS
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_ft_epochs, eta_min=1e-7)
+        total_ft_epochs = cfg.TOTAL_EPOCHS - cfg.WARMUP_EPOCHS
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_ft_epochs, eta_min=1e-7)
 
-    for epoch in range(cfg.WARMUP_EPOCHS + 1, cfg.TOTAL_EPOCHS + 1):
-        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, scaler, cfg.DEVICE, epoch)
-        scheduler.step()
-        val_metrics, _, _ = validate(model, val_loader, cfg.DEVICE)
-        print(f"  Epoch {epoch:2d}: loss={train_loss:.4f} acc={train_acc:.4f} | "
-              f"val_EER={val_metrics['EER']:.4f} val_loss={val_metrics['val_loss']:.4f} val_AUC={val_metrics['ROC-AUC']:.4f}")
-        history.append({"epoch": epoch, "stage": 2, "train_loss": train_loss,
-                        "train_acc": train_acc, **val_metrics})
+        for epoch in range(cfg.WARMUP_EPOCHS + 1, cfg.TOTAL_EPOCHS + 1):
+            if time.time() - start_time > max_runtime_sec:
+                print(f"\n[SAFETY STOP] Max runtime ({cfg.MAX_RUNTIME_MINUTES}m) exceeded. Stopping Stage 2.", flush=True)
+                break
 
-        is_best = False
-        val_l = val_metrics["val_loss"]
-        if val_metrics["EER"] < best_eer:
-            is_best = True
-        elif abs(val_metrics["EER"] - best_eer) < 1e-6 and val_l < best_loss:
-            is_best = True
+            train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, scaler, cfg.DEVICE, epoch, start_time, max_runtime_sec)
+            scheduler.step()
+            val_metrics, _, _ = validate(model, val_loader, cfg.DEVICE)
+            print(f"  Epoch {epoch:2d}: loss={train_loss:.4f} acc={train_acc:.4f} | "
+                  f"val_EER={val_metrics['EER']:.4f} val_loss={val_metrics['val_loss']:.4f} val_AUC={val_metrics['ROC-AUC']:.4f}", flush=True)
+            history.append({"epoch": epoch, "stage": 2, "train_loss": train_loss,
+                            "train_acc": train_acc, **val_metrics})
 
-        if is_best:
-            best_eer = val_metrics["EER"]
-            best_loss = val_l
-            torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "best_model.pt"))
-            print(f"    -> New best model saved (EER: {best_eer:.4f}, val_loss: {best_loss:.4f})")
+            is_best = False
+            val_l = val_metrics["val_loss"]
+            if val_metrics["EER"] < best_eer:
+                is_best = True
+            elif abs(val_metrics["EER"] - best_eer) < 1e-6 and val_l < best_loss:
+                is_best = True
+
+            if is_best:
+                best_eer = val_metrics["EER"]
+                best_loss = val_l
+                torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "best_model.pt"))
+                print(f"    -> New best model saved (EER: {best_eer:.4f}, val_loss: {best_loss:.4f})", flush=True)
 
     # Save final model and training history
     torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "final_model.pt"))
     pd.DataFrame(history).to_csv(os.path.join(cfg.OUTPUT_DIR, "training_history.csv"), index=False)
-    print(f"\n  Training complete. Best validation EER: {best_eer:.4f}")
+    elapsed_total = (time.time() - start_time) / 60.0
+    print(f"\n  Training complete in {elapsed_total:.1f} minutes. Best validation EER: {best_eer:.4f}", flush=True)
 
     return model
 
@@ -752,22 +802,20 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
 
     for gen_name, morph_paths in generators.items():
         for cond_name, transform in conditions:
+            print(f"  Evaluating {gen_name} [{cond_name}]...", flush=True)
             ds = FRLLDataset(cfg.FRLL_ZIP, bonafide_paths, morph_paths, transform=transform)
             loader = DataLoader(ds, batch_size=effective_bs, shuffle=False,
-                                num_workers=cfg.NUM_WORKERS, pin_memory=True)
+                                num_workers=cfg.NUM_WORKERS, pin_memory=cfg.PIN_MEMORY)
             metrics, labels, scores = validate(model, loader, cfg.DEVICE)
 
             result = {"generator": gen_name, "condition": cond_name, **metrics}
             all_results.append(result)
-            print(f"\n  {gen_name} [{cond_name}]:")
-            print(f"    EER:             {metrics['EER']:.4f}")
-            print(f"    BPCER@APCER=1%:  {metrics['BPCER@APCER=1%']:.4f}")
-            print(f"    BPCER@APCER=5%:  {metrics['BPCER@APCER=5%']:.4f}")
-            print(f"    ROC-AUC:         {metrics['ROC-AUC']:.4f}")
+            print(f"    EER: {metrics['EER']:.4f} | AUC: {metrics['ROC-AUC']:.4f} | "
+                  f"BPCER@1%: {metrics['BPCER@APCER=1%']:.4f} | BPCER@5%: {metrics['BPCER@APCER=5%']:.4f}", flush=True)
 
             # Honesty check
             if metrics["EER"] < 0.01:
-                print(f"    *** WARNING: EER near 0% -- potential data leakage. Audit required. ***")
+                print(f"    *** WARNING: EER near 0% -- potential data leakage. Audit required. ***", flush=True)
 
             # Save ROC curve for clean condition
             if cond_name == "clean":
@@ -786,13 +834,13 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
     # Save results table
     results_df = pd.DataFrame(all_results)
     results_df.to_csv(os.path.join(cfg.OUTPUT_DIR, "frll_results.csv"), index=False)
-    print(f"\n  Results saved to {cfg.OUTPUT_DIR}/frll_results.csv")
+    print(f"\n  Results saved to {cfg.OUTPUT_DIR}/frll_results.csv", flush=True)
 
     # Print summary table
-    print("\n" + "=" * 60)
-    print("SUMMARY TABLE")
-    print("=" * 60)
-    print(results_df.to_string(index=False, float_format="%.4f"))
+    print("\n" + "=" * 60, flush=True)
+    print("SUMMARY TABLE", flush=True)
+    print("=" * 60, flush=True)
+    print(results_df.to_string(index=False, float_format="%.4f"), flush=True)
 
     return results_df
 
@@ -843,11 +891,12 @@ def auto_detect_datasets(cfg: Config):
 
 
 def main():
+    start_all = time.time()
     cfg = Config()
     auto_detect_datasets(cfg)
 
-    print(f"SMDD path: {cfg.SMDD_ZIP} (exists={os.path.exists(cfg.SMDD_ZIP)})")
-    print(f"FRLL path: {cfg.FRLL_ZIP} (exists={os.path.exists(cfg.FRLL_ZIP)})")
+    print(f"SMDD path: {cfg.SMDD_ZIP} (exists={os.path.exists(cfg.SMDD_ZIP)})", flush=True)
+    print(f"FRLL path: {cfg.FRLL_ZIP} (exists={os.path.exists(cfg.FRLL_ZIP)})", flush=True)
 
     assert os.path.exists(cfg.SMDD_ZIP), f"SMDD dataset not found. Checked /kaggle/input and current directory."
     assert os.path.exists(cfg.FRLL_ZIP), f"FRLL dataset not found. Checked /kaggle/input and current directory."
@@ -858,9 +907,11 @@ def main():
     # Evaluate
     evaluate_frll(cfg, model)
 
-    print("\n" + "=" * 60)
-    print("DONE. All outputs in:", cfg.OUTPUT_DIR)
-    print("=" * 60)
+    elapsed_all = (time.time() - start_all) / 60.0
+    print("\n" + "=" * 60, flush=True)
+    print(f"DONE. Total execution time: {elapsed_all:.1f} minutes.", flush=True)
+    print("All outputs saved in:", cfg.OUTPUT_DIR, flush=True)
+    print("=" * 60, flush=True)
 
 
 if __name__ == "__main__":
