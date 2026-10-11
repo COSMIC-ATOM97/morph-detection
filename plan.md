@@ -170,4 +170,24 @@ Trained on SMDD (32k samples) across 4 warm-up epochs with multi-scale patch sta
 ### Key Diagnostic Insights
 1. **Landmark-based Morphs:** DINOv2 patch features achieve near-perfect discrimination on digital landmark-blended morphs (OpenCV: 0.999 AUC, FaceMorpher: 0.996 AUC, WebMorph: 0.989 AUC), with high resilience against aggressive JPEG compression.
 2. **Latent Space Morphs (The StyleGAN Gap):** StyleGAN2 morphs collapse to random guess (0.4988 AUC). Because StyleGAN2 interpolates latent vectors in $W^+$ space rather than triangulating landmarks, it produces zero pixel-level alpha blending seams. DINO patch texture statistics alone cannot separate them without frequency analysis (Stream B).
+3. **Formal Report:** Complete analysis documented in [phase1_report.md](file:///home/crimsond/project/phase1_report.md).
+
+---
+
+## 9. Phase 2 Specification: Dual-Stream UID-MAD (Stream A + Stream B)
+
+**Target:** Unify dense spatial patch features (Stream A) with high-pass frequency residual representations (Stream B) to eliminate the StyleGAN domain gap while preserving >0.99 AUC on landmark morphs.
+
+### Architecture Components
+1. **Stream A (Spatial):** Frozen DINOv2 ViT-S/14 backbone + dense patch aggregator (`CLS + Mean + Std + Max` -> 1536-d) -> 256-d projector.
+2. **Stream B (Frequency Residual):**
+   - High-pass residual computation: $R = I - \text{GaussianFilter}(I)$ or Laplacian kernel.
+   - Frequency representation: 2D Discrete Cosine Transform (DCT) or 3-channel high-pass residual tensor.
+   - Frequency encoder: Lightweight 3-layer convolutional block with Batch Normalization and GELU -> 128-d embedding.
+3. **Fusion & Classification:**
+   - Fusion layer: Concatenate Spatial (256-d) + Frequency (128-d) -> Linear projection (256-d) + Dropout (0.2).
+   - Head: ArcFace Margin Head ($s=32.0, m=0.25$, 2 classes).
+4. **Data Throughput Optimization:**
+   - Move resizing before heavy augmentations to achieve 1.5–2.5 it/s on Kaggle.
+
 
