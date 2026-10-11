@@ -135,7 +135,7 @@ Any result near 0% EER triggers a data-leakage audit before reporting.
 
 ---
 
-## 6. File Structure
+## 7. File Structure
 
 ```
 kaggle_train.py       # Complete self-contained training + evaluation script for Kaggle
@@ -145,8 +145,29 @@ Single-file design. Kaggle notebooks cannot import from `src/` subdirectories wi
 
 ---
 
-## 7. Follow-Up Prompt
+## 8. Empirical Baseline Benchmark Results (Stream A: DINOv2-Patch)
 
-```text
-Please proceed with implementing the DINO branch plan from plan.md. Build kaggle_train.py as a single self-contained script.
-```
+Trained on SMDD (32k samples) across 4 warm-up epochs with multi-scale patch statistics aggregator (`CLS + Patch Mean + Patch Std + Patch Max` -> 1536-d). Evaluated cross-dataset on unseen FRLL-Morphs:
+
+| Morph Generator | Condition | EER | BPCER @ APCER=1% | BPCER @ APCER=5% | ROC-AUC |
+|---|---|---|---|---|---|
+| **OpenCV** | Clean | **0.0094** | 0.0000 | 0.0000 | **0.9993** |
+| **OpenCV** | JPEG (q=30) | **0.0094** | 0.0098 | 0.0000 | **0.9992** |
+| **OpenCV** | Print-Scan | **0.0916** | 0.2990 | 0.1569 | **0.9786** |
+| **FaceMorpher** | Clean | **0.0245** | 0.1912 | 0.0000 | **0.9958** |
+| **FaceMorpher** | JPEG (q=30) | **0.0249** | 0.1618 | 0.0000 | **0.9956** |
+| **FaceMorpher** | Print-Scan | **0.0585** | 0.2647 | 0.0735 | **0.9859** |
+| **WebMorph** | Clean | **0.0491** | 0.2745 | 0.0490 | **0.9886** |
+| **WebMorph** | JPEG (q=30) | **0.0585** | 0.3039 | 0.0735 | **0.9875** |
+| **WebMorph** | Print-Scan | **0.2539** | 0.7892 | 0.5833 | **0.8320** |
+| **AMSL** | Clean | **0.1320** | 0.7598 | 0.3382 | **0.9461** |
+| **AMSL** | JPEG (q=30) | **0.1367** | 0.7647 | 0.3235 | **0.9434** |
+| **AMSL** | Print-Scan | **0.3978** | 0.9216 | 0.8039 | **0.6491** |
+| **StyleGAN2** | Clean | **0.5100** | 0.9951 | 0.9902 | **0.4988** |
+| **StyleGAN2** | JPEG (q=30) | **0.4998** | 0.9951 | 0.9853 | **0.4973** |
+| **StyleGAN2** | Print-Scan | **0.4577** | 0.9608 | 0.8824 | **0.5780** |
+
+### Key Diagnostic Insights
+1. **Landmark-based Morphs:** DINOv2 patch features achieve near-perfect discrimination on digital landmark-blended morphs (OpenCV: 0.999 AUC, FaceMorpher: 0.996 AUC, WebMorph: 0.989 AUC), with high resilience against aggressive JPEG compression.
+2. **Latent Space Morphs (The StyleGAN Gap):** StyleGAN2 morphs collapse to random guess (0.4988 AUC). Because StyleGAN2 interpolates latent vectors in $W^+$ space rather than triangulating landmarks, it produces zero pixel-level alpha blending seams. DINO patch texture statistics alone cannot separate them without frequency analysis (Stream B).
+
