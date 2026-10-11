@@ -893,6 +893,20 @@ def auto_detect_datasets(cfg: Config):
 def main():
     start_all = time.time()
     cfg = Config()
+
+    # Hard guard: ViT cannot run on CPU. Abort immediately if GPU was not enabled in Kaggle.
+    if not torch.cuda.is_available():
+        print("\n" + "!" * 70, flush=True)
+        print("FATAL ERROR: GPU ACCELERATOR IS NOT ENABLED IN KAGGLE!", flush=True)
+        print("torch.cuda.is_available() returned False.", flush=True)
+        print("Running Vision Transformer training on CPU takes 10+ hours.", flush=True)
+        print("\nFix in Kaggle notebook settings:", flush=True)
+        print("  1. In the right-hand panel, find 'Session options' / 'Notebook options'.", flush=True)
+        print("  2. Click 'Accelerator' -> Select 'GPU T4 x2'.", flush=True)
+        print("  3. Verify the GPU indicator turns ON before running.", flush=True)
+        print("!" * 70 + "\n", flush=True)
+        sys.exit(1)
+
     auto_detect_datasets(cfg)
 
     print(f"SMDD path: {cfg.SMDD_ZIP} (exists={os.path.exists(cfg.SMDD_ZIP)})", flush=True)
