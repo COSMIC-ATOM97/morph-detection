@@ -132,6 +132,10 @@ class Config:
     # Reproducibility
     SEED = 42
 
+    # Execution mode
+    EVAL_ONLY = False  # Set to True to skip training and evaluate best_model.pt directly
+    CKPT_TO_EVAL = "best_model.pt"  # Checkpoint file to evaluate
+
     # Device
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -358,6 +362,13 @@ class ArcFaceHead(nn.Module):
         self.weight = nn.Parameter(torch.empty(num_classes, in_features))
         nn.init.xavier_uniform_(self.weight)
 
+    def get_margin(self, embeddings: torch.Tensor) -> torch.Tensor:
+        """Returns raw cosine difference: cos(morph) - cos(bonafide) in [-2, 2]."""
+        w = F.normalize(self.weight, dim=1)
+        x = F.normalize(embeddings, dim=1)
+        cosine = F.linear(x, w)  # (B, num_classes)
+        return cosine[:, 1] - cosine[:, 0]
+
     def forward(self, embeddings: torch.Tensor, labels: torch.Tensor = None):
         # L2-normalize weight and embedding
         w = F.normalize(self.weight, dim=1)
@@ -556,7 +567,11 @@ class MorphDetector(nn.Module):
             logits_freq = self.freq_head(z_freq, labels)
             return logits_fused, logits_spatial, logits_freq
         else:
-            # Inference / Validation: Max anomaly OR-gate
+            # Inference: Compute cosine margins and probabilities for each branch
+            margin_s = self.spatial_head.get_margin(z_spatial)
+            margin_f = self.freq_head.get_margin(z_freq)
+            margin_fuse = self.fused_head.get_margin(proj)
+
             logits_s = self.spatial_head(z_spatial, labels=None)
             logits_f = self.freq_head(z_freq, labels=None)
             logits_fuse = self.fused_head(proj, labels=None)
@@ -565,17 +580,26 @@ class MorphDetector(nn.Module):
             p_f = F.softmax(logits_f, dim=1)[:, 1]
             p_fuse = F.softmax(logits_fuse, dim=1)[:, 1]
 
-            # Detects attack if EITHER spatial seam OR frequency artifact is triggered
-            p_ensemble = torch.maximum(p_s, torch.maximum(p_f, p_fuse))
+            # Calibrated ensemble: maximum in margin space avoids exponential softmax saturation
+            margin_ens = torch.maximum(margin_s, margin_f)
+            prob_ens_avg = 0.5 * p_s + 0.5 * p_f
+            prob_ens_max = torch.maximum(p_s, p_f)
 
             if return_scores:
-                return p_ensemble
+                return margin_ens
 
-            # Construct calibrated logits matching p_ensemble so validate() remains uniform
-            eps = 1e-6
-            p_clamped = torch.clamp(p_ensemble, eps, 1.0 - eps)
-            logit_val = torch.log(p_clamped / (1.0 - p_clamped))
-            return torch.stack([-logit_val / 2.0, logit_val / 2.0], dim=1)
+            return {
+                "margin_spatial": margin_s,
+                "margin_freq": margin_f,
+                "margin_fused": margin_fuse,
+                "margin_ensemble": margin_ens,
+                "prob_spatial": p_s,
+                "prob_freq": p_f,
+                "prob_fused": p_fuse,
+                "prob_ensemble_avg": prob_ens_avg,
+                "prob_ensemble_max": prob_ens_max,
+                "logits_fused": logits_fuse,
+            }
 
     def get_scores(self, x):
         """Inference: return morph probability scores."""
@@ -695,7 +719,7 @@ def train_one_epoch(model, loader, optimizer, scaler, device, epoch, start_time,
 def validate(model, loader, device):
     model.eval()
     all_labels = []
-    all_scores = []
+    collected_scores = defaultdict(list)
     total_loss = 0.0
     total_count = 0
 
@@ -703,21 +727,34 @@ def validate(model, loader, device):
         images = images.to(device, non_blocking=True)
         labels_dev = labels.to(device, non_blocking=True)
         with autocast_ctx():
-            logits = model(images, labels=None)
-            loss = F.cross_entropy(logits, labels_dev)
-            scores = F.softmax(logits, dim=1)[:, 1]
+            out = model(images, labels=None)
+            loss = F.cross_entropy(out["logits_fused"], labels_dev)
 
         total_loss += loss.item() * images.size(0)
         total_count += images.size(0)
-        all_scores.append(scores.cpu().numpy())
         all_labels.append(labels.numpy())
 
-    all_labels = np.concatenate(all_labels)
-    all_scores = np.concatenate(all_scores)
+        for k in ["margin_spatial", "margin_freq", "margin_fused", "margin_ensemble",
+                  "prob_spatial", "prob_freq", "prob_fused", "prob_ensemble_avg", "prob_ensemble_max"]:
+            collected_scores[k].append(out[k].cpu().numpy())
 
-    metrics = compute_all_metrics(all_labels, all_scores)
+    all_labels = np.concatenate(all_labels)
+    score_arrays = {k: np.concatenate(v) for k, v in collected_scores.items()}
+
+    # Primary metrics uses calibrated margin_ensemble
+    metrics = compute_all_metrics(all_labels, score_arrays["margin_ensemble"])
     metrics["val_loss"] = total_loss / max(1, total_count)
-    return metrics, all_labels, all_scores
+
+    # Detailed metrics for each branch
+    branch_metrics = {
+        "spatial": compute_all_metrics(all_labels, score_arrays["margin_spatial"]),
+        "frequency": compute_all_metrics(all_labels, score_arrays["margin_freq"]),
+        "fused": compute_all_metrics(all_labels, score_arrays["margin_fused"]),
+        "ensemble_margin": metrics,
+        "ensemble_avg": compute_all_metrics(all_labels, score_arrays["prob_ensemble_avg"]),
+    }
+
+    return metrics, all_labels, score_arrays, branch_metrics
 
 
 def train(cfg: Config):
@@ -798,7 +835,7 @@ def train(cfg: Config):
             break
 
         train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, scaler, cfg.DEVICE, epoch, start_time, max_runtime_sec)
-        val_metrics, _, _ = validate(model, val_loader, cfg.DEVICE)
+        val_metrics, _, _, _ = validate(model, val_loader, cfg.DEVICE)
         print(f"  Epoch {epoch:2d}: loss={train_loss:.4f} acc={train_acc:.4f} | "
               f"val_EER={val_metrics['EER']:.4f} val_loss={val_metrics['val_loss']:.4f} val_AUC={val_metrics['ROC-AUC']:.4f}", flush=True)
         history.append({"epoch": epoch, "stage": 1, "train_loss": train_loss,
@@ -850,7 +887,7 @@ def train(cfg: Config):
 
             train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, scaler, cfg.DEVICE, epoch, start_time, max_runtime_sec)
             scheduler.step()
-            val_metrics, _, _ = validate(model, val_loader, cfg.DEVICE)
+            val_metrics, _, _, _ = validate(model, val_loader, cfg.DEVICE)
             print(f"  Epoch {epoch:2d}: loss={train_loss:.4f} acc={train_acc:.4f} | "
                   f"val_EER={val_metrics['EER']:.4f} val_loss={val_metrics['val_loss']:.4f} val_AUC={val_metrics['ROC-AUC']:.4f}", flush=True)
             history.append({"epoch": epoch, "stage": 2, "train_loss": train_loss,
@@ -886,7 +923,7 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
     """Evaluate best checkpoint on all FRLL-Morphs generator splits + degradation conditions."""
 
     print("\n" + "=" * 60)
-    print("Cross-Dataset Evaluation on FRLL-Morphs")
+    print("Cross-Dataset Evaluation on FRLL-Morphs (Multi-Branch UID-MAD)")
     print("=" * 60)
 
     num_gpus = torch.cuda.device_count()
@@ -895,10 +932,31 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
     # Load best model
     if model is None:
         raw_model = MorphDetector(cfg).to(cfg.DEVICE)
-        ckpt_path = os.path.join(cfg.OUTPUT_DIR, "best_model.pt")
-        if os.path.exists(ckpt_path):
-            raw_model.load_state_dict(torch.load(ckpt_path, map_location=cfg.DEVICE))
-            print(f"  Loaded checkpoint: {ckpt_path}")
+        search_paths = [
+            cfg.CKPT_TO_EVAL,
+            os.path.join(cfg.OUTPUT_DIR, cfg.CKPT_TO_EVAL),
+            os.path.join(".", cfg.CKPT_TO_EVAL),
+            "/kaggle/working/best_model.pt",
+            "results_run2/best_model.pt",
+            "best_model.pt",
+        ]
+        ckpt_path = None
+        for p in search_paths:
+            if os.path.exists(p):
+                ckpt_path = p
+                break
+
+        if ckpt_path is not None:
+            state_dict = torch.load(ckpt_path, map_location=cfg.DEVICE)
+            new_state_dict = {}
+            for k, v in state_dict.items():
+                new_key = k[7:] if k.startswith("module.") else k
+                new_state_dict[new_key] = v
+            missing, unexpected = raw_model.load_state_dict(new_state_dict, strict=False)
+            print(f"  Loaded checkpoint: {ckpt_path} (missing={len(missing)}, unexpected={len(unexpected)})", flush=True)
+        else:
+            print(f"  WARNING: No checkpoint found matching {cfg.CKPT_TO_EVAL}. Running with initialized weights.", flush=True)
+
         model = raw_model
         if num_gpus > 1:
             model = nn.DataParallel(raw_model)
@@ -913,6 +971,7 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
         print(f"  {gen_name}: {len(paths)} images")
 
     all_results = []
+    all_comparisons = []
     conditions = [
         ("clean", get_val_transforms(cfg.IMG_SIZE)),
         ("jpeg_q30", get_degraded_transforms(cfg.IMG_SIZE, mode="jpeg")),
@@ -925,41 +984,71 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
             ds = FRLLDataset(cfg.FRLL_ZIP, bonafide_paths, morph_paths, transform=transform)
             loader = DataLoader(ds, batch_size=effective_bs, shuffle=False,
                                 num_workers=cfg.NUM_WORKERS, pin_memory=cfg.PIN_MEMORY)
-            metrics, labels, scores = validate(model, loader, cfg.DEVICE)
+            metrics, labels, scores, branch_metrics = validate(model, loader, cfg.DEVICE)
 
             result = {"generator": gen_name, "condition": cond_name, **metrics}
             all_results.append(result)
-            print(f"    EER: {metrics['EER']:.4f} | AUC: {metrics['ROC-AUC']:.4f} | "
-                  f"BPCER@1%: {metrics['BPCER@APCER=1%']:.4f} | BPCER@5%: {metrics['BPCER@APCER=5%']:.4f}", flush=True)
+
+            comp_result = {
+                "generator": gen_name,
+                "condition": cond_name,
+                "spatial_AUC": branch_metrics["spatial"]["ROC-AUC"],
+                "spatial_EER": branch_metrics["spatial"]["EER"],
+                "freq_AUC": branch_metrics["frequency"]["ROC-AUC"],
+                "freq_EER": branch_metrics["frequency"]["EER"],
+                "fused_AUC": branch_metrics["fused"]["ROC-AUC"],
+                "fused_EER": branch_metrics["fused"]["EER"],
+                "ensemble_margin_AUC": branch_metrics["ensemble_margin"]["ROC-AUC"],
+                "ensemble_margin_EER": branch_metrics["ensemble_margin"]["EER"],
+                "ensemble_avg_AUC": branch_metrics["ensemble_avg"]["ROC-AUC"],
+                "ensemble_avg_EER": branch_metrics["ensemble_avg"]["EER"],
+            }
+            all_comparisons.append(comp_result)
+
+            print(f"    [Spatial]     AUC: {branch_metrics['spatial']['ROC-AUC']:.4f} | EER: {branch_metrics['spatial']['EER']:.4f}", flush=True)
+            print(f"    [Frequency]   AUC: {branch_metrics['frequency']['ROC-AUC']:.4f} | EER: {branch_metrics['frequency']['EER']:.4f}", flush=True)
+            print(f"    [Fused Head]  AUC: {branch_metrics['fused']['ROC-AUC']:.4f} | EER: {branch_metrics['fused']['EER']:.4f}", flush=True)
+            print(f"    [Ens(Margin)] AUC: {branch_metrics['ensemble_margin']['ROC-AUC']:.4f} | EER: {branch_metrics['ensemble_margin']['EER']:.4f} | BPCER@1%: {branch_metrics['ensemble_margin']['BPCER@APCER=1%']:.4f}", flush=True)
 
             # Honesty check
             if metrics["EER"] < 0.01:
                 print(f"    *** WARNING: EER near 0% -- potential data leakage. Audit required. ***", flush=True)
 
-            # Save ROC curve for clean condition
+            # Save multi-curve ROC comparison for clean condition
             if cond_name == "clean":
-                fpr, tpr, _ = roc_curve(labels, scores)
-                plt.figure(figsize=(6, 6))
-                plt.plot(fpr, tpr, linewidth=2)
-                plt.plot([0, 1], [0, 1], "k--", alpha=0.5)
-                plt.xlabel("FPR (BPCER)")
-                plt.ylabel("TPR (1 - APCER)")
-                plt.title(f"ROC: {gen_name}")
+                plt.figure(figsize=(7, 7))
+                plt.plot([0, 1], [0, 1], "k--", alpha=0.4, label="Random Guess (0.50)")
+                fpr_s, tpr_s, _ = roc_curve(labels, scores["margin_spatial"])
+                plt.plot(fpr_s, tpr_s, label=f"Spatial (AUC: {branch_metrics['spatial']['ROC-AUC']:.3f})", linewidth=1.8, color="#1f77b4")
+                fpr_f, tpr_f, _ = roc_curve(labels, scores["margin_freq"])
+                plt.plot(fpr_f, tpr_f, label=f"Frequency (AUC: {branch_metrics['frequency']['ROC-AUC']:.3f})", linewidth=1.8, color="#2ca02c")
+                fpr_fuse, tpr_fuse, _ = roc_curve(labels, scores["margin_fused"])
+                plt.plot(fpr_fuse, tpr_fuse, label=f"Fused Head (AUC: {branch_metrics['fused']['ROC-AUC']:.3f})", linewidth=1.8, color="#ff7f0e")
+                fpr_ens, tpr_ens, _ = roc_curve(labels, scores["margin_ensemble"])
+                plt.plot(fpr_ens, tpr_ens, label=f"Calibrated Ens (AUC: {branch_metrics['ensemble_margin']['ROC-AUC']:.3f})", linewidth=2.5, color="#d62728")
+
+                plt.xlabel("BPCER (False Positive Rate)")
+                plt.ylabel("1 - APCER (True Positive Rate)")
+                plt.title(f"Multi-Stream ROC: {gen_name} (Clean)")
                 plt.grid(True, alpha=0.3)
+                plt.legend(loc="lower right", fontsize=10)
                 plt.tight_layout()
                 plt.savefig(os.path.join(cfg.OUTPUT_DIR, f"roc_{gen_name}.png"), dpi=150)
                 plt.close()
 
-    # Save results table
+    # Save results tables
     results_df = pd.DataFrame(all_results)
     results_df.to_csv(os.path.join(cfg.OUTPUT_DIR, "frll_results.csv"), index=False)
+    comp_df = pd.DataFrame(all_comparisons)
+    comp_df.to_csv(os.path.join(cfg.OUTPUT_DIR, "frll_results_comparison.csv"), index=False)
     print(f"\n  Results saved to {cfg.OUTPUT_DIR}/frll_results.csv", flush=True)
+    print(f"  Comparison table saved to {cfg.OUTPUT_DIR}/frll_results_comparison.csv", flush=True)
 
-    # Print summary table
-    print("\n" + "=" * 60, flush=True)
-    print("SUMMARY TABLE", flush=True)
-    print("=" * 60, flush=True)
-    print(results_df.to_string(index=False, float_format="%.4f"), flush=True)
+    # Print summary comparison table
+    print("\n" + "=" * 80, flush=True)
+    print("BRANCH COMPARISON SUMMARY TABLE (ROC-AUC & EER)", flush=True)
+    print("=" * 80, flush=True)
+    print(comp_df.to_string(index=False, float_format="%.4f"), flush=True)
 
     return results_df
 
@@ -1013,6 +1102,17 @@ def main():
     start_all = time.time()
     cfg = Config()
 
+    import argparse
+    parser = argparse.ArgumentParser(description="UID-MAD Dual-Stream Training & Evaluation")
+    parser.add_argument("--eval-only", action="store_true", help="Skip training; evaluate existing checkpoint directly")
+    parser.add_argument("--ckpt", type=str, default=None, help="Path to checkpoint file to evaluate")
+    args, _ = parser.parse_known_args()
+
+    if args.eval_only:
+        cfg.EVAL_ONLY = True
+    if args.ckpt:
+        cfg.CKPT_TO_EVAL = args.ckpt
+
     # Hard guard: ViT cannot run on CPU. Abort immediately if GPU was not enabled in Kaggle.
     if not torch.cuda.is_available():
         print("\n" + "!" * 70, flush=True)
@@ -1034,11 +1134,17 @@ def main():
     assert os.path.exists(cfg.SMDD_ZIP), f"SMDD dataset not found. Checked /kaggle/input and current directory."
     assert os.path.exists(cfg.FRLL_ZIP), f"FRLL dataset not found. Checked /kaggle/input and current directory."
 
-    # Train
-    model = train(cfg)
-
-    # Evaluate
-    evaluate_frll(cfg, model)
+    if cfg.EVAL_ONLY:
+        print("\n" + "=" * 60, flush=True)
+        print("RUNNING IN EVALUATION-ONLY MODE", flush=True)
+        print(f"Target checkpoint: {cfg.CKPT_TO_EVAL}", flush=True)
+        print("=" * 60, flush=True)
+        evaluate_frll(cfg, model=None)
+    else:
+        # Train
+        model = train(cfg)
+        # Evaluate
+        evaluate_frll(cfg, model)
 
     elapsed_all = (time.time() - start_all) / 60.0
     print("\n" + "=" * 60, flush=True)

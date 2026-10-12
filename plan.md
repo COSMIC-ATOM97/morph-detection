@@ -181,13 +181,34 @@ Trained on SMDD (32k samples) across 4 warm-up epochs with multi-scale patch sta
 ### Architecture Components
 1. **Stream A (Spatial):** Frozen DINOv2 ViT-S/14 backbone + dense patch aggregator (`CLS + Mean + Std + Max` -> 1536-d) -> 256-d projector.
 2. **Stream B (Frequency Residual):**
-   - High-pass residual computation: $R = I - \text{GaussianFilter}(I)$ or Laplacian kernel.
-   - Frequency representation: 2D Discrete Cosine Transform (DCT) or 3-channel high-pass residual tensor.
-   - Frequency encoder: Lightweight 3-layer convolutional block with Batch Normalization and GELU -> 128-d embedding.
-3. **Fusion & Classification:**
-   - Fusion layer: Concatenate Spatial (256-d) + Frequency (128-d) -> Linear projection (256-d) + Dropout (0.2).
-   - Head: ArcFace Margin Head ($s=32.0, m=0.25$, 2 classes).
-4. **Data Throughput Optimization:**
-   - Move resizing before heavy augmentations to achieve 1.5–2.5 it/s on Kaggle.
+   - High-pass residual computation: 3x3 Laplacian kernel on GPU.
+   - Frequency encoder: Lightweight 4-stage convolutional block with Batch Normalization and GELU -> 128-d embedding.
+3. **Multi-Task Decoupled Heads:**
+   - Independent ArcFace heads for `spatial_head`, `freq_head`, and `fused_head` supervised under joint loss: $\mathcal{L} = \mathcal{L}_{\text{fuse}} + 0.5 \mathcal{L}_s + 0.5 \mathcal{L}_f$.
+
+---
+
+## 10. Phase 2 Empirical Outcomes & Autopsy
+
+Executed on Dual NVIDIA T4 GPUs on Kaggle (`results(1).zip`):
+- **In-Domain Convergence (SMDD):** 99.30% training accuracy, 0.0001 (0.01%) validation EER, 0.9999 validation ROC-AUC.
+- **Cross-Dataset Results on FRLL-Morphs:**
+  - OpenCV: 0.7924 ROC-AUC (recovered from 0.2422 in early concat, but lower than 0.9993 baseline).
+  - FaceMorpher: 0.8295 ROC-AUC.
+  - StyleGAN: 0.5363 ROC-AUC; WebMorph: 0.5444 ROC-AUC; AMSL: 0.5145 ROC-AUC.
+- **Root Cause Identified:**
+  - Uncalibrated `torch.maximum(P_s, P_f, P_{\text{fuse}})` with saturated ArcFace temperature ($s=32.0$).
+  - Synthetic training vs. real camera sensor noise mismatch: Stream B was trained on synthetic SMDD bona fides, and assigned elevated scores to physical PRNU sensor noise in FRLL real camera bona fides. The `max()` operator propagated these false alarms into the bona fide pool, collapsing the decision threshold to $1.003 \times 10^{-6}$.
+- **Checkpoint Status:** All 3 heads (`spatial_head`, `freq_head`, `fused_head`) are intact in `results_run2/best_model.pt`.
+- **Formal Report:** Complete analysis documented in [phase2_report.md](file:///home/crimsond/project/phase2_report.md).
+
+---
+
+## 11. Phase 3: Calibrated Decision Architecture & Verification Plan
+
+1. **Standalone Head Evaluation:** Update evaluation harness to evaluate `spatial_head`, `freq_head`, and `fused_head` independently on FRLL to observe isolated performance.
+2. **Cosine-Margin Scoring:** Score using raw angular cosine difference $\Delta \cos = \cos(\theta_{\text{morph}}) - \cos(\theta_{\text{bona}})$ instead of saturated probability $P$, eliminating numerical threshold collapse.
+3. **Domain-Calibrated Ensemble:** Standardize stream margins against bona fide reference statistics ($Z = (S - \mu_{\text{bf}}) / \sigma_{\text{bf}}$) before soft combination.
+
 
 
