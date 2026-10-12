@@ -261,14 +261,14 @@ morph-detection/
 │   └── phase2/                    # Phase 2 FRLL evaluation matrix & ROC plots across 15 splits
 │
 ├── literature/                    # NORMAL FILES: Foundational background research
-│   ├── compiled_result.md         # Multi-paper synthesis & gap analysis
-│   └── paper1.md - paper4.md      # Literature summaries & baseline extractions
+│   ├── literature_synthesis.md    # Multi-paper synthesis & gap analysis
+│   └── paper1_*.md - paper4_*.md  # Literature summaries & baseline extractions
 │
 └── team_internal/                 # TEAM DATA: Internal sprint planning & handoff (collaborators only)
     ├── README.md                  # Team navigation guide
-    ├── WEEK1_TEAM_HANDOFF.md      # Plain-English Week 1 onboarding & task roadmap
-    ├── plan.md                    # Living 4-week project plan & milestone tracker
-    └── prep.md                    # Scratchpad & environment setup notes
+    ├── week1_team_handoff.md      # Plain-English Week 1 onboarding & task roadmap
+    ├── sprint_roadmap.md          # Living 4-week project plan & milestone tracker
+    └── environment_setup.md       # Scratchpad & environment setup notes
 ```
 
 ### 8.2 Execution on Kaggle (Step-by-Step)

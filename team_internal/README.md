@@ -6,9 +6,9 @@
 
 ## 📂 Internal Team Directory
 
-- **[`WEEK1_TEAM_HANDOFF.md`](WEEK1_TEAM_HANDOFF.md):** Plain-English summary of Week 1 discoveries, how to run evaluations on Kaggle in 2 minutes, and task assignments for upcoming weeks.
-- **[`plan.md`](plan.md):** Living project plan, experiment tracking, and 4-week milestone schedule.
-- **[`prep.md`](prep.md):** Environment setup notes, Kaggle paths, and scratchpad.
+- **[`week1_team_handoff.md`](week1_team_handoff.md):** Plain-English summary of Week 1 discoveries, how to run evaluations on Kaggle in 2 minutes, and task assignments for upcoming weeks.
+- **[`sprint_roadmap.md`](sprint_roadmap.md):** Living project plan, experiment tracking, and 4-week milestone schedule.
+- **[`environment_setup.md`](environment_setup.md):** Environment setup notes, Kaggle paths, and scratchpad.
 
 ---
 

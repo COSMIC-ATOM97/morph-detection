@@ -107,10 +107,10 @@ python kaggle_train.py
 | **Presentable** | **[`docs/phase1_report.md`](../docs/phase1_report.md)** | Phase 1 baseline report (Spatial ViT + StyleGAN gap) | Modeling team |
 | **Presentable** | **[`docs/phase2_report.md`](../docs/phase2_report.md)** | Phase 2 dual-stream report (Frequency residual + autopsy) | Modeling team |
 | **Results** | **[`results/phase1/`](../results/phase1/)** | Phase 1 ROC curves and SMDD training logs | Results review |
-| **Results** | **[`results/phase2/`](../results/phase2/)** | Tracked Phase 2 evaluation matrix across 15 splits and ROC curves | Results review |
-| **Literature** | **[`literature/compiled_result.md`](../literature/compiled_result.md)** | Synthesis of 4 foundational literature papers | Literature review / Background |
-| **Team Only** | **[`team_internal/WEEK1_TEAM_HANDOFF.md`](WEEK1_TEAM_HANDOFF.md)** | **This document:** Plain-English summary of Week 1 + tasks | All Teammates |
-| **Team Only** | **[`team_internal/plan.md`](plan.md)** | Living project plan with multi-week roadmap | Project manager / Team lead |
+| **Literature** | **[`literature/literature_synthesis.md`](../literature/literature_synthesis.md)** | Synthesis of 4 foundational literature papers | Literature review / Background |
+| **Team Only** | **[`team_internal/week1_team_handoff.md`](week1_team_handoff.md)** | **This document:** Plain-English summary of Week 1 + tasks | All Teammates |
+| **Team Only** | **[`team_internal/sprint_roadmap.md`](sprint_roadmap.md)** | Living project plan with multi-week roadmap | Project manager / Team lead |
+| **Team Only** | **[`team_internal/environment_setup.md`](environment_setup.md)** | Scratchpad & environment setup notes | Technical team |
 
 ---
 

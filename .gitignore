@@ -1,4 +1,5 @@
 *.zip
 *.pt
 __pycache__/
-results_run2/
+checkpoints/
+
