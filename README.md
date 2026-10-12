@@ -13,11 +13,12 @@ Research project on generalized Single-Image Morph Attack Detection (S-MAD) for 
 For a complete academic and technical review, consult the formal documentation:
 
 1. **[RESEARCH_REPORT.md](RESEARCH_REPORT.md):** Master academic research dossier containing problem formulation, mathematical models, empirical progression across all phases, scientific diagnoses, and operational recommendations for defense.
-2. **[phase1_report.md](phase1_report.md):** Phase 1 report establishing the single-stream spatial baseline (DINOv2 patch aggregator) and the scientific autopsy of why spatial models collapse on StyleGAN2 morphs.
-3. **[phase2_report.md](phase2_report.md):** Phase 2 report detailing the dual-stream frequency breakthrough (Nyquist checkerboard detection), modality competition, and sensor noise domain shift analysis.
-4. **[architecture.md](architecture.md):** System architecture specification covering tensor shapes, Laplacian kernel formulation, and multi-branch ArcFace metric learning.
-5. **[plan.md](plan.md):** Living engineering plan detailing milestones, hyperparameter specifications, and verification stages.
-6. **[compiled_result.md](compiled_result.md):** Synthesis of foundational MAD literature across four key survey and benchmark papers.
+2. **[WEEK1_TEAM_HANDOFF.md](WEEK1_TEAM_HANDOFF.md):** Plain-English team handoff guide covering Week 1 breakthroughs, how to run the code, and task roadmap for collaborators.
+3. **[phase1_report.md](phase1_report.md):** Phase 1 report establishing the single-stream spatial baseline (DINOv2 patch aggregator) and the scientific autopsy of why spatial models collapse on StyleGAN2 morphs.
+4. **[phase2_report.md](phase2_report.md):** Phase 2 report detailing the dual-stream frequency breakthrough (Nyquist checkerboard detection), modality competition, and sensor noise domain shift analysis.
+5. **[architecture.md](architecture.md):** System architecture specification covering tensor shapes, Laplacian kernel formulation, and multi-branch ArcFace metric learning.
+6. **[plan.md](plan.md):** Living engineering plan detailing milestones, multi-week roadmap, and verification stages.
+7. **[compiled_result.md](compiled_result.md):** Synthesis of foundational MAD literature across four key survey and benchmark papers.
 
 ---
 

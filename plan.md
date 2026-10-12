@@ -210,5 +210,35 @@ Executed on Dual NVIDIA T4 GPUs on Kaggle (`results(1).zip`):
 2. **Cosine-Margin Scoring:** Score using raw angular cosine difference $\Delta \cos = \cos(\theta_{\text{morph}}) - \cos(\theta_{\text{bona}})$ instead of saturated probability $P$, eliminating numerical threshold collapse.
 3. **Domain-Calibrated Ensemble:** Standardize stream margins against bona fide reference statistics ($Z = (S - \mu_{\text{bf}}) / \sigma_{\text{bf}}$) before soft combination.
 
+---
+
+## 12. Multi-Week Team Roadmap & Milestone Schedule
+
+### Week 1: Foundation, Dual-Stream Exploration & Empirical Diagnosis (COMPLETED)
+- [x] Consolidate foundational MAD literature (Papers 1-4) into unified synthesis (`compiled_result.md`).
+- [x] Implement and benchmark Phase 1 Single-Stream DINOv2 Spatial Baseline on Kaggle Dual NVIDIA T4s.
+- [x] Discover StyleGAN2 spatial domain gap (0.4988 AUC) and formulate high-pass frequency residual hypothesis.
+- [x] Implement Phase 2 Dual-Stream architecture (Laplacian filter + 4-stage ConvNet + multi-branch ArcFace).
+- [x] Run overnight Kaggle training and perform mathematical autopsy on modality competition and sensor noise domain shift.
+- [x] Author comprehensive formal dossiers (`RESEARCH_REPORT.md`, `phase1_report.md`, `phase2_report.md`, `README.md`).
+
+### Week 2: Score Calibration & Domain Invariance Optimization
+- [ ] **Task 2.1 (Evaluation):** Run `--eval-only` on Kaggle with `best_model.pt` to extract isolated benchmark metrics for each branch (`Spatial`, `Frequency`, `Fused Head`, `Cosine Margin Ensemble`).
+- [ ] **Task 2.2 (Calibration):** Implement Bona Fide Z-score standardization ($Z = (S - \mu_{\text{bf}}) / \sigma_{\text{bf}}$) to eliminate false alarm spillover from camera sensor noise.
+- [ ] **Task 2.3 (Robust Training):** Add sensor noise data augmentation (Gaussian noise + sensor grain simulation) to Stream B to train frequency invariance on real camera noise.
+- [ ] **Milestone 2 Target:** Achieve simultaneous >0.99 AUC on landmark morphs (OpenCV, FaceMorpher) and >0.85 AUC on generative morphs (StyleGAN2) under Clean and JPEG conditions.
+
+### Week 3: Single-Pass Explainability & Attention Visualization
+- [ ] **Task 3.1 (Attention Map Extraction):** Extract DINOv2 multi-head self-attention rollout maps from last transformer layer to localize facial blending anomalies.
+- [ ] **Task 3.2 (Landmark Alignment):** Overlay patch attention heatmaps with 68 facial landmark zones (eyes, nose, mouth boundary) as proposed in Paper 1.
+- [ ] **Task 3.3 (Inference Speed):** Ensure explanation heatmaps generate in single forward pass (<50ms per image) without multi-pass occlusion or Grad-CAM computation.
+- [ ] **Milestone 3 Target:** Produce visual explanation masks that highlight iris double contours and mask edges for border control officer verification.
+
+### Week 4: Paper Draft, Benchmarking & Final Presentation
+- [ ] **Task 4.1 (Paper Authoring):** Compile method, architecture, and empirical tables into a formal conference paper draft (IEEE/IAPR format).
+- [ ] **Task 4.2 (Comparative Benchmarking):** Tabulate UID-MAD metrics against published SOTA benchmarks (FaceNet+XQDA, Single-ViT, MorGAN baselines).
+- [ ] **Task 4.3 (Team Presentation):** Prepare final slide deck covering problem definition, baseline failure, dual-stream fix, and operational FRONTEX metrics.
+- [ ] **Milestone 4 Target:** Complete submission-ready research paper and working interactive demo.
+
 
 
