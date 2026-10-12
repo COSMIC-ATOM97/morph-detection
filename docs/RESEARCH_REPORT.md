@@ -247,20 +247,28 @@ To combine the >0.99 AUC landmark capability of Stream A with the >0.85 AUC gene
 ### 8.1 Repository File Structure
 ```
 morph-detection/
-├── RESEARCH_REPORT.md       # Master Academic Dossier (This Document)
-├── phase1_report.md         # Phase 1 Evaluation Report (Spatial Baseline & StyleGAN Failure)
-├── phase2_report.md         # Phase 2 Evaluation Report (Dual-Stream & Modality Competition)
-├── plan.md                  # Detailed Living Implementation & Research Plan
-├── architecture.md          # Formal System Architecture & Mathematical Formulation
-├── compiled_result.md       # Synthesis of the 4 Foundational Research Papers
-├── kaggle_train.py          # Complete, Self-Contained Training & Evaluation Script
-├── best_model.pt            # Phase 1 Baseline Checkpoint (91.9 MB)
-├── results_run2/            # Extracted Phase 2 Artifacts (from results(1).zip)
-│   ├── best_model.pt        # Phase 2 Multi-Branch Checkpoint (93.8 MB, 237 layers)
-│   ├── frll_results.csv     # Complete Phase 2 Quantitative Evaluation Matrix
-│   ├── training_history.csv # 6-Epoch SMDD In-Domain Convergence History
-│   └── roc_morph_*.png      # Clean Condition ROC Curves per Generator
-└── .gitignore               # Clean Repository Filter
+├── README.md                      # Project landing page & reproduction instructions
+├── kaggle_train.py                # Standalone script for Kaggle GPUs (Dual T4)
+│
+├── docs/                          # PRESENTABLE: Formal academic deliverables for advisor & thesis
+│   ├── RESEARCH_REPORT.md         # Master Research Dossier (This Document)
+│   ├── architecture.md            # System Architecture & Mathematical Formulation
+│   ├── phase1_report.md           # Phase 1 Evaluation Report (Spatial ViT Baseline)
+│   └── phase2_report.md           # Phase 2 Evaluation Report (Dual-Stream Frequency Autopsy)
+│
+├── results/                       # RESULTS: Empirical artifacts, metrics & plots
+│   ├── phase1/                    # Phase 1 ROC curves & SMDD convergence
+│   └── phase2/                    # Phase 2 FRLL evaluation matrix & ROC plots across 15 splits
+│
+├── literature/                    # NORMAL FILES: Foundational background research
+│   ├── compiled_result.md         # Multi-paper synthesis & gap analysis
+│   └── paper1.md - paper4.md      # Literature summaries & baseline extractions
+│
+└── team_internal/                 # TEAM DATA: Internal sprint planning & handoff (collaborators only)
+    ├── README.md                  # Team navigation guide
+    ├── WEEK1_TEAM_HANDOFF.md      # Plain-English Week 1 onboarding & task roadmap
+    ├── plan.md                    # Living 4-week project plan & milestone tracker
+    └── prep.md                    # Scratchpad & environment setup notes
 ```
 
 ### 8.2 Execution on Kaggle (Step-by-Step)

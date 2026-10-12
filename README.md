@@ -8,17 +8,44 @@ Research project on generalized Single-Image Morph Attack Detection (S-MAD) for 
 
 ---
 
-## 📑 Core Documentation Dossier
+## 📂 Project Organization
 
-For a complete academic and technical review, consult the formal documentation:
+The repository is structured into distinct, modular directories:
 
-1. **[RESEARCH_REPORT.md](RESEARCH_REPORT.md):** Master academic research dossier containing problem formulation, mathematical models, empirical progression across all phases, scientific diagnoses, and operational recommendations for defense.
-2. **[WEEK1_TEAM_HANDOFF.md](WEEK1_TEAM_HANDOFF.md):** Plain-English team handoff guide covering Week 1 breakthroughs, how to run the code, and task roadmap for collaborators.
-3. **[phase1_report.md](phase1_report.md):** Phase 1 report establishing the single-stream spatial baseline (DINOv2 patch aggregator) and the scientific autopsy of why spatial models collapse on StyleGAN2 morphs.
-4. **[phase2_report.md](phase2_report.md):** Phase 2 report detailing the dual-stream frequency breakthrough (Nyquist checkerboard detection), modality competition, and sensor noise domain shift analysis.
-5. **[architecture.md](architecture.md):** System architecture specification covering tensor shapes, Laplacian kernel formulation, and multi-branch ArcFace metric learning.
-6. **[plan.md](plan.md):** Living engineering plan detailing milestones, multi-week roadmap, and verification stages.
-7. **[compiled_result.md](compiled_result.md):** Synthesis of foundational MAD literature across four key survey and benchmark papers.
+```
+morph-detection/
+├── README.md                      # Project landing page & reproduction instructions
+├── kaggle_train.py                # Standalone script for Kaggle GPUs (Dual T4)
+│
+├── docs/                          # 🎓 PRESENTABLE: Formal academic deliverables for advisor & thesis
+│   ├── RESEARCH_REPORT.md         # Master Research Dossier & Academic Paper
+│   ├── architecture.md            # System Architecture & Mathematical Formulation
+│   ├── phase1_report.md           # Phase 1 Evaluation Report (Spatial ViT Baseline)
+│   └── phase2_report.md           # Phase 2 Evaluation Report (Dual-Stream Frequency Autopsy)
+│
+├── results/                       # 📊 RESULTS: Empirical artifacts, metrics & plots
+│   ├── phase1/                    # Phase 1 ROC curves & SMDD convergence
+│   └── phase2/                    # Phase 2 FRLL evaluation matrix & ROC plots across 15 splits
+│
+├── literature/                    # 📚 NORMAL FILES: Foundational background research
+│   ├── compiled_result.md         # Multi-paper synthesis & gap analysis
+│   └── paper1.md - paper4.md      # Literature summaries & baseline extractions
+│
+└── team_internal/                 # 🔒 TEAM DATA: Internal sprint planning & handoff (collaborators only)
+    ├── README.md                  # Team navigation guide
+    ├── WEEK1_TEAM_HANDOFF.md      # Plain-English Week 1 onboarding & task roadmap
+    ├── plan.md                    # Living 4-week project plan & milestone tracker
+    └── prep.md                    # Scratchpad & environment setup notes
+```
+
+---
+
+## 📑 Core Documentation Map
+
+1. **Academic Review:** Start with the **[Master Research Report](docs/RESEARCH_REPORT.md)** and **[System Architecture](docs/architecture.md)**.
+2. **Experimental Data:** Check **[Phase 1 Results](results/phase1/)** and **[Phase 2 Results](results/phase2/)**.
+3. **Literature Background:** See **[Literature Synthesis](literature/compiled_result.md)**.
+4. **Internal Team Notes:** See **[Week 1 Team Handoff](team_internal/WEEK1_TEAM_HANDOFF.md)** and **[Multi-Week Plan](team_internal/plan.md)**.
 
 ---
 

@@ -98,18 +98,19 @@ python kaggle_train.py
 
 ## 4. Key Files in This Repository
 
-| File | Purpose | Who Should Read It |
-|---|---|---|
-| **[README.md](README.md)** | Project overview, badges, quickstart, and result highlights | Everyone / GitHub landing page |
-| **[RESEARCH_REPORT.md](RESEARCH_REPORT.md)** | **Master academic dossier** (theory, math, results, failure autopsy) | Professor / Advisor / Thesis |
-| **[WEEK1_TEAM_HANDOFF.md](WEEK1_TEAM_HANDOFF.md)** | **This document:** Plain-English summary of Week 1 + tasks | All Teammates |
-| **[phase1_report.md](phase1_report.md)** | Phase 1 baseline report (Spatial ViT + StyleGAN gap) | Modeling team |
-| **[phase2_report.md](phase2_report.md)** | Phase 2 dual-stream report (Frequency residual + autopsy) | Modeling team |
-| **[architecture.md](architecture.md)** | Formal tensor shapes, model definitions, and ArcFace loss | Code developers |
-| **[plan.md](plan.md)** | Living project plan with multi-week roadmap | Project manager / Team lead |
-| **[compiled_result.md](compiled_result.md)** | Summary of 4 foundational literature papers | Literature review / Background |
-| **[kaggle_train.py](kaggle_train.py)** | Self-contained training & evaluation script | Everyone running code |
-| **`phase2_results/`** | Tracked CSVs and ROC curve plots from the overnight run | Everyone checking results |
+| Category | File | Purpose | Audience |
+|---|---|---|---|
+| **Root** | **[`README.md`](../README.md)** | Project overview, badges, quickstart, and result highlights | Everyone / GitHub landing page |
+| **Root** | **[`kaggle_train.py`](../kaggle_train.py)** | Self-contained training & evaluation script | Everyone running code |
+| **Presentable** | **[`docs/RESEARCH_REPORT.md`](../docs/RESEARCH_REPORT.md)** | **Master academic dossier** (theory, math, results, failure autopsy) | Professor / Advisor / Thesis |
+| **Presentable** | **[`docs/architecture.md`](../docs/architecture.md)** | Formal tensor shapes, model definitions, and ArcFace loss | Code developers |
+| **Presentable** | **[`docs/phase1_report.md`](../docs/phase1_report.md)** | Phase 1 baseline report (Spatial ViT + StyleGAN gap) | Modeling team |
+| **Presentable** | **[`docs/phase2_report.md`](../docs/phase2_report.md)** | Phase 2 dual-stream report (Frequency residual + autopsy) | Modeling team |
+| **Results** | **[`results/phase1/`](../results/phase1/)** | Phase 1 ROC curves and SMDD training logs | Results review |
+| **Results** | **[`results/phase2/`](../results/phase2/)** | Tracked Phase 2 evaluation matrix across 15 splits and ROC curves | Results review |
+| **Literature** | **[`literature/compiled_result.md`](../literature/compiled_result.md)** | Synthesis of 4 foundational literature papers | Literature review / Background |
+| **Team Only** | **[`team_internal/WEEK1_TEAM_HANDOFF.md`](WEEK1_TEAM_HANDOFF.md)** | **This document:** Plain-English summary of Week 1 + tasks | All Teammates |
+| **Team Only** | **[`team_internal/plan.md`](plan.md)** | Living project plan with multi-week roadmap | Project manager / Team lead |
 
 ---
 
