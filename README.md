@@ -15,10 +15,17 @@ The repository is structured into distinct, modular directories:
 ```
 morph-detection/
 ├── README.md                      # Project landing page & reproduction instructions
-├── kaggle_train.py                # Standalone script for Kaggle GPUs (Dual T4)
+├── kaggle_train.py                # Primary standalone script for Kaggle GPUs (Dual T4)
+│
+├── scripts/                       # 💻 STANDALONE SCRIPTS & JUPYTER NOTEBOOKS
+│   ├── phase1_dino_spatial.py     # Phase 1 standalone script (Single-stream spatial baseline)
+│   ├── phase1_dino_spatial.ipynb  # Phase 1 Jupyter Notebook (Interactive execution & cells)
+│   ├── phase2_dual_stream_uid_mad.py    # Phase 2 standalone script (Dual-stream spatial+frequency)
+│   └── phase2_dual_stream_uid_mad.ipynb # Phase 2 Jupyter Notebook (Interactive execution & cells)
 │
 ├── docs/                          # 🎓 PRESENTABLE: Formal academic deliverables for advisor & thesis
 │   ├── RESEARCH_REPORT.md         # Master Research Dossier & Academic Paper
+│   ├── phase1_comprehensive_briefing.md # Phase 1 End-to-End Briefing & Professor Q&A Defense Guide
 │   ├── architecture.md            # System Architecture & Mathematical Formulation
 │   ├── phase1_report.md           # Phase 1 Evaluation Report (Spatial ViT Baseline)
 │   └── phase2_report.md           # Phase 2 Evaluation Report (Dual-Stream Frequency Autopsy)
@@ -42,10 +49,12 @@ morph-detection/
 
 ## 📑 Core Documentation Map
 
-1. **Academic Review:** Start with the **[Master Research Report](docs/RESEARCH_REPORT.md)** and **[System Architecture](docs/architecture.md)**.
-2. **Experimental Data:** Check **[Phase 1 Results](results/phase1/)** and **[Phase 2 Results](results/phase2/)**.
-3. **Literature Background:** See **[Literature Synthesis](literature/literature_synthesis.md)**.
-4. **Internal Team Notes:** See **[Week 1 Team Handoff](team_internal/week1_team_handoff.md)** and **[Sprint Roadmap](team_internal/sprint_roadmap.md)**.
+1. **Meeting with Advisor / Oral Defense:** Read **[Phase 1 Comprehensive Briefing](docs/phase1_comprehensive_briefing.md)** for complete theoretical derivations, benchmark tables, failure analysis, and anticipated Q&A defense talking points.
+2. **Academic Review:** See the **[Master Research Report](docs/RESEARCH_REPORT.md)** and **[System Architecture](docs/architecture.md)**.
+3. **Runnable Notebooks & Scripts:** Navigate to **[scripts/](scripts/)** for standalone `.py` and `.ipynb` files for both Phase 1 and Phase 2.
+4. **Experimental Data:** Check **[Phase 1 Results](results/phase1/)** and **[Phase 2 Results](results/phase2/)**.
+5. **Literature Background:** See **[Literature Synthesis](literature/literature_synthesis.md)**.
+6. **Internal Team Notes:** See **[Week 1 Team Handoff](team_internal/week1_team_handoff.md)**.
 
 ---
 
