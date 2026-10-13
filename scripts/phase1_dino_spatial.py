@@ -687,11 +687,21 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
 
     # Load model
     if model is None:
-        raw_model = MorphDetector(cfg).to(cfg.DEVICE)
-        ckpt_path = os.path.join(cfg.OUTPUT_DIR, cfg.CKPT_TO_EVAL)
-        if not os.path.exists(ckpt_path):
-            ckpt_path = cfg.CKPT_TO_EVAL
-        if os.path.exists(ckpt_path):
+        search_paths = [
+            os.path.join(cfg.OUTPUT_DIR, cfg.CKPT_TO_EVAL),
+            os.path.join("checkpoints", cfg.CKPT_TO_EVAL),
+            os.path.join("checkpoints", "phase1_spatial_baseline.pt"),
+            cfg.CKPT_TO_EVAL,
+            os.path.join(".", cfg.CKPT_TO_EVAL),
+            "best_model.pt",
+        ]
+        ckpt_path = None
+        for p in search_paths:
+            if os.path.exists(p):
+                ckpt_path = p
+                break
+
+        if ckpt_path is not None:
             raw_model.load_state_dict(torch.load(ckpt_path, map_location=cfg.DEVICE))
             print(f"  Loaded checkpoint: {ckpt_path}")
         else:

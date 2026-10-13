@@ -935,8 +935,10 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
         search_paths = [
             cfg.CKPT_TO_EVAL,
             os.path.join(cfg.OUTPUT_DIR, cfg.CKPT_TO_EVAL),
+            os.path.join("checkpoints", cfg.CKPT_TO_EVAL),
             os.path.join(".", cfg.CKPT_TO_EVAL),
             "/kaggle/working/best_model.pt",
+            "checkpoints/best_model.pt",
             "results_run2/best_model.pt",
             "best_model.pt",
         ]

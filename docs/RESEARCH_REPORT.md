@@ -251,10 +251,11 @@ morph-detection/
 ├── kaggle_train.py                # Standalone script for Kaggle GPUs (Dual T4)
 │
 ├── docs/                          # PRESENTABLE: Formal academic deliverables for advisor & thesis
+│   ├── week1_report.md            # Week 1 Academic Report (Phase 1 Spatial DINOv2 Pipeline)
+│   ├── week2_report.md            # Week 2 Academic Report (Phase 2 Dual-Stream UID-MAD Pipeline)
 │   ├── RESEARCH_REPORT.md         # Master Research Dossier (This Document)
-│   ├── architecture.md            # System Architecture & Mathematical Formulation
-│   ├── phase1_report.md           # Phase 1 Evaluation Report (Spatial ViT Baseline)
-│   └── phase2_report.md           # Phase 2 Evaluation Report (Dual-Stream Frequency Autopsy)
+│   ├── phase1_comprehensive_briefing.md # Phase 1 Defense Briefing & Professor Q&A Guide
+│   └── architecture.md            # System Architecture & Mathematical Formulation
 │
 ├── results/                       # RESULTS: Empirical artifacts, metrics & plots
 │   ├── phase1/                    # Phase 1 ROC curves & SMDD convergence

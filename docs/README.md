@@ -16,5 +16,3 @@ This directory stores the formal academic research reports, system architecture 
    - **Phase 1 Comprehensive Defense Briefing & Q&A Guide:** Complete end-to-end oral defense document detailing the single-stream spatial ViT architecture, mathematical formulations, in-domain convergence, full 15-slice benchmark table, deep failure analysis on StyleGAN2 collapse, and an exhaustive Q&A defense preparation section for professor reviews.
 5. **[`architecture.md`](architecture.md):**
    - **System Architecture & Tensor Dimensions:** Detailed specification of the DINOv2 dense patch aggregator, Laplacian high-pass filter, 4-stage convolutional encoder, and multi-branch ArcFace classification heads.
-6. **[`phase1_report.md`](phase1_report.md) & [`phase2_report.md`](phase2_report.md):**
-   - **Phase Evaluation Summaries:** Raw empirical logs, metric tables, and failure diagnostic reports for Phase 1 and Phase 2.

@@ -28,9 +28,7 @@ morph-detection/
 │   ├── week2_report.md            # Week 2 Academic Report (Phase 2 Dual-Stream UID-MAD Pipeline)
 │   ├── RESEARCH_REPORT.md         # Master Research Dossier & Academic Paper
 │   ├── phase1_comprehensive_briefing.md # Phase 1 End-to-End Briefing & Professor Q&A Defense Guide
-│   ├── architecture.md            # System Architecture & Mathematical Formulation
-│   ├── phase1_report.md           # Phase 1 Evaluation Report (Spatial ViT Baseline)
-│   └── phase2_report.md           # Phase 2 Evaluation Report (Dual-Stream Frequency Autopsy)
+│   └── architecture.md            # System Architecture & Mathematical Formulation
 │
 ├── results/                       # 📊 RESULTS: Empirical artifacts, metrics & plots
 │   ├── phase1/                    # Phase 1 ROC curves & SMDD convergence

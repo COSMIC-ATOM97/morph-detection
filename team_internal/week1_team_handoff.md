@@ -40,7 +40,7 @@ We reviewed and cross-analyzed four foundational papers to identify why previous
 - Spatial-only networks miss generative artifacts; post-hoc occlusion heatmaps (Grad-CAM) are too slow for real-time border gates.
 - **Our Decision:** A dual-stream architecture (Spatial Vision Transformer + Frequency Residual ConvNet) trained with ArcFace margin loss.
 
-#### Milestone 2: Phase 1 Single-Stream DINOv2 Baseline (`phase1_report.md`)
+#### Milestone 2: Phase 1 Single-Stream DINOv2 Baseline (`docs/week1_report.md`)
 - We implemented **Stream A**: Frozen DINOv2 ViT-S/14 backbone + a multi-scale patch token aggregator (`CLS + Mean + Std + Max` -> 1536-d) + ArcFace classification head ($s=32.0, m=0.25$).
 - Trained on SMDD (32,000 synthetic faces), evaluated strictly out-of-distribution on FRLL-Morphs across 5 generators.
 - **The Good News:** Landmark-blended morphs were virtually solved in the spatial domain:
@@ -51,7 +51,7 @@ We reviewed and cross-analyzed four foundational papers to identify why previous
 - **The Failure Mode:** Complete collapse on StyleGAN2 morphs (**0.4988 ROC-AUC**, 51.0% EER).
 - **Why this happened:** Landmark morphs use Delaunay triangulation and alpha blending, leaving double edges around pupils and boundary cut seams. StyleGAN2 interpolates latent codes in $W^+$ space and synthesizes from scratch; it produces **zero pixel-level boundary seams**, making it invisible to spatial patch statistics alone.
 
-#### Milestone 3: Phase 2 Dual-Stream Frequency Implementation (`phase2_report.md`)
+#### Milestone 3: Phase 2 Dual-Stream Frequency Implementation (`docs/week2_report.md`)
 - We designed **Stream B**: A depthwise non-trainable 3x3 Laplacian high-pass filter that strips facial identity and isolates high-frequency generator noise, followed by a 4-stage ConvNet (128-d).
 - **Trial 1 (Early Fusion):** Concatenating Stream A + Stream B into a single ArcFace head proved our frequency hypothesis: **StyleGAN2 detection surged from 0.4988 to 0.8525 ROC-AUC!**
 - **Trial 1 Complication (Modality Competition):** Because the ConvNet converged much faster than the frozen ViT, it dominated the fusion head. Real camera photos (FRLL OpenCV morphs) have no generative upsampling noise, so Stream B misclassified them as bona fide, inverting landmark predictions (OpenCV dropped to 0.2422 AUC).
@@ -104,8 +104,8 @@ python kaggle_train.py
 | **Root** | **[`kaggle_train.py`](../kaggle_train.py)** | Self-contained training & evaluation script | Everyone running code |
 | **Presentable** | **[`docs/RESEARCH_REPORT.md`](../docs/RESEARCH_REPORT.md)** | **Master academic dossier** (theory, math, results, failure autopsy) | Professor / Advisor / Thesis |
 | **Presentable** | **[`docs/architecture.md`](../docs/architecture.md)** | Formal tensor shapes, model definitions, and ArcFace loss | Code developers |
-| **Presentable** | **[`docs/phase1_report.md`](../docs/phase1_report.md)** | Phase 1 baseline report (Spatial ViT + StyleGAN gap) | Modeling team |
-| **Presentable** | **[`docs/phase2_report.md`](../docs/phase2_report.md)** | Phase 2 dual-stream report (Frequency residual + autopsy) | Modeling team |
+| **Presentable** | **[`docs/week1_report.md`](../docs/week1_report.md)** | Week 1 baseline report (Spatial ViT + StyleGAN gap) | Modeling team |
+| **Presentable** | **[`docs/week2_report.md`](../docs/week2_report.md)** | Week 2 dual-stream report (Frequency residual + autopsy) | Modeling team |
 | **Results** | **[`results/phase1/`](../results/phase1/)** | Phase 1 ROC curves and SMDD training logs | Results review |
 | **Literature** | **[`literature/literature_synthesis.md`](../literature/literature_synthesis.md)** | Synthesis of 4 foundational literature papers | Literature review / Background |
 | **Team Only** | **[`team_internal/week1_team_handoff.md`](week1_team_handoff.md)** | **This document:** Plain-English summary of Week 1 + tasks | All Teammates |

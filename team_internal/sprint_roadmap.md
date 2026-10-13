@@ -170,7 +170,7 @@ Trained on SMDD (32k samples) across 4 warm-up epochs with multi-scale patch sta
 ### Key Diagnostic Insights
 1. **Landmark-based Morphs:** DINOv2 patch features achieve near-perfect discrimination on digital landmark-blended morphs (OpenCV: 0.999 AUC, FaceMorpher: 0.996 AUC, WebMorph: 0.989 AUC), with high resilience against aggressive JPEG compression.
 2. **Latent Space Morphs (The StyleGAN Gap):** StyleGAN2 morphs collapse to random guess (0.4988 AUC). Because StyleGAN2 interpolates latent vectors in $W^+$ space rather than triangulating landmarks, it produces zero pixel-level alpha blending seams. DINO patch texture statistics alone cannot separate them without frequency analysis (Stream B).
-3. **Formal Report:** Complete analysis documented in [phase1_report.md](file:///home/crimsond/project/phase1_report.md).
+3. **Formal Report:** Complete analysis documented in [week1_report.md](file:///home/crimsond/project/docs/week1_report.md).
 
 ---
 
@@ -200,7 +200,7 @@ Executed on Dual NVIDIA T4 GPUs on Kaggle (`results(1).zip`):
   - Uncalibrated `torch.maximum(P_s, P_f, P_{\text{fuse}})` with saturated ArcFace temperature ($s=32.0$).
   - Synthetic training vs. real camera sensor noise mismatch: Stream B was trained on synthetic SMDD bona fides, and assigned elevated scores to physical PRNU sensor noise in FRLL real camera bona fides. The `max()` operator propagated these false alarms into the bona fide pool, collapsing the decision threshold to $1.003 \times 10^{-6}$.
 - **Checkpoint Status:** All 3 heads (`spatial_head`, `freq_head`, `fused_head`) are intact in `results_run2/best_model.pt`.
-- **Formal Report:** Complete analysis documented in [phase2_report.md](file:///home/crimsond/project/phase2_report.md).
+- **Formal Report:** Complete analysis documented in [week2_report.md](file:///home/crimsond/project/docs/week2_report.md).
 
 ---
 
@@ -220,7 +220,7 @@ Executed on Dual NVIDIA T4 GPUs on Kaggle (`results(1).zip`):
 - [x] Discover StyleGAN2 spatial domain gap (0.4988 AUC) and formulate high-pass frequency residual hypothesis.
 - [x] Implement Phase 2 Dual-Stream architecture (Laplacian filter + 4-stage ConvNet + multi-branch ArcFace).
 - [x] Run overnight Kaggle training and perform mathematical autopsy on modality competition and sensor noise domain shift.
-- [x] Author comprehensive formal dossiers (`RESEARCH_REPORT.md`, `phase1_report.md`, `phase2_report.md`, `README.md`).
+- [x] Author comprehensive formal dossiers (`RESEARCH_REPORT.md`, `week1_report.md`, `week2_report.md`, `README.md`).
 
 ### Week 2: Score Calibration & Domain Invariance Optimization
 - [ ] **Task 2.1 (Evaluation):** Run `--eval-only` on Kaggle with `best_model.pt` to extract isolated benchmark metrics for each branch (`Spatial`, `Frequency`, `Fused Head`, `Cosine Margin Ensemble`).
