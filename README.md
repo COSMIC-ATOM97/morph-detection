@@ -11,7 +11,7 @@ Academic research project on Single-Image Morph Attack Detection (S-MAD) for Aut
 
 ## Executive Summary
 
-A **face morph attack** occurs when two individuals (e.g., an accomplice with no criminal record and a criminal actor) synthetically blend their facial photographs into a single composite image. When submitted during a passport or electronic identity document (eMRTD) application, the resulting document can verify against the biometric templates of **both individuals**, allowing unauthorized border crossing through Automated Border Control (ABC) e-Gates.
+A **face morph attack** occurs when two individuals (such as an accomplice with no criminal record and a criminal actor) synthetically blend their facial photographs into a single composite image. When submitted during a passport or electronic identity document (eMRTD) application, the resulting document can verify against the biometric templates of **both individuals**, allowing unauthorized border crossing through Automated Border Control (ABC) e-Gates.
 
 ```
        Subject A (Accomplice) ──┐
@@ -22,7 +22,7 @@ A **face morph attack** occurs when two individuals (e.g., an accomplice with no
 This project establishes a rigorous **Single-Stream Spatial Baseline** evaluated strictly under **ISO/IEC 30107-3** presentation attack detection standards.
 
 ### Key Highlights
-- **Self-Supervised Spatial Foundation:** Leverages DINOv2 ViT-S/14 with a multi-scale patch token aggregator (`CLS + Mean + Std + Max` -> 1536-d) sensitive to subtle localized blending seams.
+- **Self-Supervised Spatial Foundation:** Leverages DINOv2 ViT-S/14 with a multi-scale patch token aggregator (`CLS + Mean + Std + Max` to 1536-d) sensitive to subtle localized blending seams.
 - **Angular Margin Metric Learning:** Implements Additive Angular Margin Loss (ArcFace: $s=30.0, m=0.35$) to enforce compact hyperspherical feature clustering.
 - **Near-Perfect Landmark Morph Detection:** Achieved **0.9993 ROC-AUC (0.94% EER)** on OpenCV and **0.9958 ROC-AUC (2.45% EER)** on FaceMorpher zero-shot out-of-distribution.
 - **Digital Compression Robustness:** Maintained **0.9992 ROC-AUC** under aggressive JPEG compression ($q=30$) via anti-shortcut data augmentation.
@@ -144,11 +144,33 @@ Physical printing (CMYK halftoning) followed by scanning acts as an analog low-p
 
 ---
 
+## Academic Presentation & Defense Quick Reference
+
+When presenting these results to advisors and technical committees, the following structured justifications summarize our design decisions:
+
+1. **Why DINOv2 ViT instead of standard facial recognition backbones (InsightFace/ArcFace)?**
+   - Face recognition models are trained to optimize identity invariance, discarding subtle lighting, edge, and texture variations.
+   - Morph detection requires sensitivity to localized pixel-level structural discontinuities. DINOv2 self-supervised patch tokens retain dense spatial correspondences and texture variance without identity projection.
+
+2. **Why ArcFace loss instead of standard Binary Cross-Entropy?**
+   - Binary Cross-Entropy optimizes a Euclidean separating hyperplane but does not penalize intra-class dispersion.
+   - ArcFace maps representations onto a unit hypersphere and enforces an angular margin ($m=0.35$ radians), producing tightly clustered bona fide and attack representations essential for out-of-distribution generalization.
+
+3. **Did the model overfit to SMDD?**
+   - No. Zero-shot transfer to OpenCV (0.94% EER) and FaceMorpher (2.45% EER) proves robust cross-dataset generalization.
+   - The collapse on StyleGAN2 (51.00% EER) is a fundamental representation boundary of spatial RGB features, not statistical overfitting.
+
+4. **Why evaluate under BPCER @ APCER = 1% rather than simple Accuracy?**
+   - In border control operations (ICAO Doc 9303 / Frontex), allowing morph attacks through an e-Gate is a critical security failure ($\text{APCER} \le 1\%$).
+   - BPCER at this threshold quantifies the real-world operational cost: the percentage of genuine passengers wrongly flagged for secondary manual screening.
+
+---
+
 ## Proposed Next Steps (Future Research Directions)
 
-The empirical failure on StyleGAN2 directly defines the next scientific objective:
+The empirical failure on StyleGAN2 directly defines the next scientific milestones:
 1. **Frequency-Domain Residual Modeling:** While StyleGAN2 leaves no spatial seams, its transposed convolutions and upsampling layers induce periodic spectral Nyquist peaks in the 2D frequency domain (DCT/FFT) and lack physical camera Photo-Response Non-Uniformity (PRNU) sensor noise.
-2. **Dual-Domain Architecture Design:** We propose coupling Stream A (Spatial ViT) with a dedicated high-pass residual frequency branch (e.g., Laplacian residual filter + lightweight ConvNet) to provide comprehensive coverage across both landmark-warped and generative latent morphs.
+2. **Dual-Domain Architecture Design:** We propose coupling Stream A (Spatial ViT) with a dedicated high-pass residual frequency branch (such as a Laplacian residual filter and lightweight ConvNet) to provide comprehensive coverage across both landmark-warped and generative latent morphs.
 3. **Calibrated Decision Fusion:** Designing continuous margin-based scoring to prevent modality dominance across distinct attack distributions.
 
 ---
@@ -157,20 +179,20 @@ The empirical failure on StyleGAN2 directly defines the next scientific objectiv
 
 ```
 morph-detection/
-├── README.md                      # This academic presentation dossier
+├── README.md                      # Academic presentation dossier & results summary
 │
 ├── scripts/                       # EXECUTABLE CODE & NOTEBOOKS
 │   ├── phase1_dino_spatial.py     # Standalone Python script (Training + Evaluation)
 │   └── phase1_dino_spatial.ipynb  # Interactive Jupyter Notebook (19 cells)
 │
 ├── docs/                          # RESEARCH DOCUMENTATION & DEFENSE GUIDES
-│   ├── week1_report.md            # Week 1 Formal Academic Milestone Report
-│   ├── phase1_comprehensive_briefing.md # End-to-End Briefing & Oral Defense Q&A Guide
-│   ├── architecture.md            # System Architecture & Mathematical Formulation
-│   └── RESEARCH_REPORT.md         # Comprehensive Research Dossier
+│   ├── phase1_comprehensive_briefing.md # Comprehensive briefing and defense Q&A guide
+│   ├── week1_report.md            # Week 1 formal milestone report
+│   ├── architecture.md            # System architecture and mathematical formulation
+│   └── RESEARCH_REPORT.md         # Full research dossier
 │
 ├── results/                       # EXPERIMENTAL METRICS & PLOTS
-│   ├── phase1/                    # Phase 1 Evaluation Artifacts
+│   ├── phase1/                    # Phase 1 evaluation artifacts
 │   │   ├── training_history.csv   # SMDD 4-epoch convergence log
 │   │   ├── roc_morph_opencv.png   # ROC curve: OpenCV (0.9993 AUC)
 │   │   ├── roc_morph_facemorpher.png # ROC curve: FaceMorpher (0.9958 AUC)
