@@ -24,6 +24,8 @@ morph-detection/
 │   └── phase2_dual_stream_uid_mad.ipynb # Phase 2 Jupyter Notebook (Interactive execution & cells)
 │
 ├── docs/                          # 🎓 PRESENTABLE: Formal academic deliverables for advisor & thesis
+│   ├── week1_report.md            # Week 1 Academic Report (Phase 1 Spatial DINOv2 Pipeline)
+│   ├── week2_report.md            # Week 2 Academic Report (Phase 2 Dual-Stream UID-MAD Pipeline)
 │   ├── RESEARCH_REPORT.md         # Master Research Dossier & Academic Paper
 │   ├── phase1_comprehensive_briefing.md # Phase 1 End-to-End Briefing & Professor Q&A Defense Guide
 │   ├── architecture.md            # System Architecture & Mathematical Formulation
@@ -49,12 +51,12 @@ morph-detection/
 
 ## 📑 Core Documentation Map
 
-1. **Meeting with Advisor / Oral Defense:** Read **[Phase 1 Comprehensive Briefing](docs/phase1_comprehensive_briefing.md)** for complete theoretical derivations, benchmark tables, failure analysis, and anticipated Q&A defense talking points.
-2. **Academic Review:** See the **[Master Research Report](docs/RESEARCH_REPORT.md)** and **[System Architecture](docs/architecture.md)**.
-3. **Runnable Notebooks & Scripts:** Navigate to **[scripts/](scripts/)** for standalone `.py` and `.ipynb` files for both Phase 1 and Phase 2.
-4. **Experimental Data:** Check **[Phase 1 Results](results/phase1/)** and **[Phase 2 Results](results/phase2/)**.
-5. **Literature Background:** See **[Literature Synthesis](literature/literature_synthesis.md)**.
-6. **Internal Team Notes:** See **[Week 1 Team Handoff](team_internal/week1_team_handoff.md)**.
+1. **Week 1 Formal Report:** Read **[`docs/week1_report.md`](docs/week1_report.md)** for the complete single-stream spatial DINOv2 pipeline, in-domain SMDD convergence, cross-dataset FRLL benchmark, and StyleGAN failure analysis.
+2. **Week 2 Formal Report:** Read **[`docs/week2_report.md`](docs/week2_report.md)** for the dual-stream UID-MAD pipeline, Stream B frequency ConvNet engineering, Kaggle multi-GPU training, empirical results across two trials, and the forensic autopsy of the naive max-gate failure.
+3. **Oral Defense Briefing:** Read **[`docs/phase1_comprehensive_briefing.md`](docs/phase1_comprehensive_briefing.md)** for anticipated professor questions and technical answers.
+4. **Master Research Paper:** See **[`docs/RESEARCH_REPORT.md`](docs/RESEARCH_REPORT.md)** and **[`docs/architecture.md`](docs/architecture.md)**.
+5. **Runnable Scripts & Notebooks:** Navigate to **[`scripts/`](scripts/)** for standalone `.py` and `.ipynb` files for both pipelines.
+6. **Experimental Artifacts:** Check **[`results/phase1/`](results/phase1/)** and **[`results/phase2/`](results/phase2/)**.
 
 ---
 
