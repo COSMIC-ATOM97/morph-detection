@@ -107,6 +107,13 @@ class Config:
     FREQ_DIM = 128     # Stream B frequency residual embedding dimension
     PROJ_DIM = 256     # Fused projection dimension
 
+    # LoRA Configuration for DINOv2 (Stream A)
+    USE_LORA = True
+    LORA_R = 8         # Rank dimension
+    LORA_ALPHA = 16.0  # Scaling factor (alpha / r = 2.0)
+    LORA_DROPOUT = 0.05
+    LORA_BLOCKS = 4    # Apply LoRA to last 4 blocks (blocks 8, 9, 10, 11)
+
     # ArcFace
     ARCFACE_S = 32.0
     ARCFACE_M = 0.25  # Softer margin to prevent overconfidence on synthetic data
@@ -118,12 +125,12 @@ class Config:
     NUM_WORKERS = 0  # 0 workers eliminates multiprocessing IPC deadlocks on Kaggle
     PIN_MEMORY = False  # Avoids CUDA allocator deadlocks
     WARMUP_EPOCHS = 4  # 4 epochs head + frequency encoder training (~8-10 min)
-    TOTAL_EPOCHS = 6  # 6 epochs total (4 warmup + 2 differential fine-tuning, ~14 min)
+    TOTAL_EPOCHS = 6  # 6 epochs total (4 warmup + 2 fine-tuning, ~14 min)
     HEAD_LR = 1e-3
     FINETUNE_HEAD_LR = 1e-4
-    FINETUNE_BACKBONE_LR = 1e-6  # Conservative fine-tune rate to preserve DINOv2 generalization
+    FINETUNE_BACKBONE_LR = 1e-4  # Optimal learning rate for LoRA adapter matrices
     WEIGHT_DECAY = 1e-3  # Stronger L2 regularization
-    UNFREEZE_BLOCKS = 1  # Unfreeze only the final block (block 11)
+    UNFREEZE_BLOCKS = 1  # Fallback if USE_LORA is False
     MAX_RUNTIME_MINUTES = 30  # Hard safety ceiling: exits cleanly if training ever exceeds 30m
 
     # Validation split
@@ -182,6 +189,11 @@ def get_train_transforms(img_size: int) -> A.Compose:
         # Photometric variation
         A.RandomGamma(gamma_limit=(70, 130), p=0.3),
         A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.3),
+        # Camera sensor & PRNU noise simulation (neutralizes cross-dataset sensor gap)
+        A.OneOf([
+            A.GaussNoise(var_limit=(10.0, 40.0), p=1.0),
+            A.MultiplicativeNoise(multiplier=(0.95, 1.05), elementwise=True, p=1.0),
+        ], p=0.4),
         # Grayscale (destroys color hue shortcuts, forces structural & frequency analysis)
         A.ToGray(p=0.15),
     ]
@@ -352,6 +364,36 @@ def load_frll_paths(data_source: str):
 # Model
 # ---------------------------------------------------------------------------
 
+class LoRALinear(nn.Module):
+    """
+    Low-Rank Adaptation (LoRA) layer wrapping a standard nn.Linear.
+    Keeps pretrained weights frozen and trains rank decomposition matrices A and B.
+    """
+
+    def __init__(self, original_linear: nn.Linear, r: int = 8, lora_alpha: float = 16.0, lora_dropout: float = 0.05):
+        super().__init__()
+        self.linear = original_linear
+        self.linear.weight.requires_grad = False
+        if self.linear.bias is not None:
+            self.linear.bias.requires_grad = False
+
+        in_features = original_linear.in_features
+        out_features = original_linear.out_features
+        self.r = r
+        self.scaling = lora_alpha / r
+        self.lora_A = nn.Parameter(torch.zeros(r, in_features))
+        self.lora_B = nn.Parameter(torch.zeros(out_features, r))
+        self.dropout = nn.Dropout(p=lora_dropout) if lora_dropout > 0.0 else nn.Identity()
+
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
+        nn.init.zeros_(self.lora_B)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        base = self.linear(x)
+        lora = F.linear(self.dropout(x), self.lora_B @ self.lora_A) * self.scaling
+        return base + lora
+
+
 class ArcFaceHead(nn.Module):
     """Additive angular margin classification head."""
 
@@ -389,19 +431,32 @@ class ArcFaceHead(nn.Module):
 
 class FrequencyResidualStream(nn.Module):
     """
-    Stream B: High-pass Laplacian residual filter + Multi-scale Conv encoder.
+    Stream B: Multi-directional high-pass residual filter + Multi-scale Conv encoder.
     Isolates generator noise, checkerboard upsampling artifacts, and frequency anomalies.
     """
 
     def __init__(self, out_dim: int = 128):
         super().__init__()
-        # Fixed 3x3 Laplacian high-pass filter (depthwise, non-trainable)
-        kernel = torch.tensor([
+        # Depthwise high-pass filter bank:
+        # Combines isotropic 8-neighbor Laplacian with horizontal and vertical gradients
+        k_lap = torch.tensor([
             [-1., -1., -1.],
             [-1.,  8., -1.],
             [-1., -1., -1.]
         ], dtype=torch.float32) / 8.0
-        weight = kernel.view(1, 1, 3, 3).repeat(3, 1, 1, 1)
+        k_h = torch.tensor([
+            [ 0.,  0.,  0.],
+            [-1.,  2., -1.],
+            [ 0.,  0.,  0.]
+        ], dtype=torch.float32) / 2.0
+        k_v = torch.tensor([
+            [ 0., -1.,  0.],
+            [ 0.,  2.,  0.],
+            [ 0., -1.,  0.]
+        ], dtype=torch.float32) / 2.0
+
+        k_combined = (k_lap + k_h + k_v) / 3.0
+        weight = k_combined.view(1, 1, 3, 3).repeat(3, 1, 1, 1)
         self.hp_filter = nn.Conv2d(3, 3, kernel_size=3, padding=1, bias=False, groups=3)
         self.hp_filter.weight = nn.Parameter(weight, requires_grad=False)
 
@@ -522,9 +577,45 @@ class MorphDetector(nn.Module):
             m=cfg.ARCFACE_M,
         )
 
+        # ---- Stream A: LoRA Adaptation ----
+        self.lora_params = []
+        if getattr(cfg, "USE_LORA", False):
+            self.apply_lora(cfg.LORA_BLOCKS, cfg.LORA_R, cfg.LORA_ALPHA, cfg.LORA_DROPOUT)
+
+    def apply_lora(self, num_blocks: int, r: int, alpha: float, dropout: float = 0.05):
+        """Inject LoRA adapters into the last num_blocks of the ViT backbone."""
+        self.lora_params = []
+        if not hasattr(self.backbone, "blocks"):
+            print("  [LoRA Warning] Backbone has no .blocks attribute. Skipping LoRA.", flush=True)
+            return
+
+        blocks = list(self.backbone.blocks)
+        target_blocks = blocks[-num_blocks:]
+        for block in target_blocks:
+            if hasattr(block, "attn"):
+                if hasattr(block.attn, "qkv") and isinstance(block.attn.qkv, nn.Linear):
+                    block.attn.qkv = LoRALinear(block.attn.qkv, r=r, lora_alpha=alpha, lora_dropout=dropout)
+                    self.lora_params.extend([block.attn.qkv.lora_A, block.attn.qkv.lora_B])
+                if hasattr(block.attn, "proj") and isinstance(block.attn.proj, nn.Linear):
+                    block.attn.proj = LoRALinear(block.attn.proj, r=r, lora_alpha=alpha, lora_dropout=dropout)
+                    self.lora_params.extend([block.attn.proj.lora_A, block.attn.proj.lora_B])
+
+        print(f"  Applied LoRA (r={r}, alpha={alpha}) to last {num_blocks} ViT blocks ({len(self.lora_params)} adapter tensors).", flush=True)
+
     def freeze_backbone(self):
         for param in self.backbone.parameters():
             param.requires_grad = False
+        if hasattr(self, "lora_params") and self.lora_params:
+            for p in self.lora_params:
+                p.requires_grad = False
+
+    def unfreeze_lora(self):
+        if hasattr(self, "lora_params") and self.lora_params:
+            for p in self.lora_params:
+                p.requires_grad = True
+            print(f"  Unfroze {len(self.lora_params)} LoRA adapter tensors.", flush=True)
+        else:
+            self.unfreeze_last_n_blocks(self.cfg.UNFREEZE_BLOCKS)
 
     def unfreeze_last_n_blocks(self, n: int):
         """Unfreeze the last n transformer blocks of the ViT."""
@@ -741,16 +832,33 @@ def validate(model, loader, device):
     all_labels = np.concatenate(all_labels)
     score_arrays = {k: np.concatenate(v) for k, v in collected_scores.items()}
 
-    # Primary metrics uses calibrated margin_ensemble
-    metrics = compute_all_metrics(all_labels, score_arrays["margin_ensemble"])
+    # Compute Z-score calibrated decision fusion against bona fides
+    bf_mask = (all_labels == 0)
+    if bf_mask.sum() > 1:
+        s_s = score_arrays["margin_spatial"]
+        s_f = score_arrays["margin_freq"]
+        mu_s = float(s_s[bf_mask].mean())
+        std_s = float(s_s[bf_mask].std()) + 1e-6
+        mu_f = float(s_f[bf_mask].mean())
+        std_f = float(s_f[bf_mask].std()) + 1e-6
+        z_s = (s_s - mu_s) / std_s
+        z_f = (s_f - mu_f) / std_f
+        cal_score = 0.5 * z_s + 0.5 * z_f
+        score_arrays["margin_calibrated"] = cal_score
+    else:
+        score_arrays["margin_calibrated"] = score_arrays["margin_fused"]
+
+    # Primary metric uses the joint fused head margin
+    metrics = compute_all_metrics(all_labels, score_arrays["margin_fused"])
     metrics["val_loss"] = total_loss / max(1, total_count)
 
     # Detailed metrics for each branch
     branch_metrics = {
         "spatial": compute_all_metrics(all_labels, score_arrays["margin_spatial"]),
         "frequency": compute_all_metrics(all_labels, score_arrays["margin_freq"]),
-        "fused": compute_all_metrics(all_labels, score_arrays["margin_fused"]),
-        "ensemble_margin": metrics,
+        "fused": metrics,
+        "calibrated": compute_all_metrics(all_labels, score_arrays["margin_calibrated"]),
+        "ensemble_margin": compute_all_metrics(all_labels, score_arrays["margin_ensemble"]),
         "ensemble_avg": compute_all_metrics(all_labels, score_arrays["prob_ensemble_avg"]),
     }
 
@@ -854,10 +962,14 @@ def train(cfg: Config):
             torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "best_model.pt"))
             print(f"    -> New best model saved (EER: {best_eer:.4f}, val_loss: {best_loss:.4f})", flush=True)
 
-    # ---- Stage 2: Differential fine-tuning ----
+    # ---- Stage 2: Fine-tuning ----
     if not timed_out:
-        print(f"\n[4/5] Stage 2: Differential fine-tuning (Unfreezing last {cfg.UNFREEZE_BLOCKS} block, {cfg.TOTAL_EPOCHS - cfg.WARMUP_EPOCHS} epochs)...", flush=True)
-        raw_model.unfreeze_last_n_blocks(cfg.UNFREEZE_BLOCKS)
+        if getattr(cfg, "USE_LORA", False):
+            print(f"\n[4/5] Stage 2: LoRA Fine-Tuning (Adapting last {cfg.LORA_BLOCKS} blocks, {cfg.TOTAL_EPOCHS - cfg.WARMUP_EPOCHS} epochs)...", flush=True)
+            raw_model.unfreeze_lora()
+        else:
+            print(f"\n[4/5] Stage 2: Differential fine-tuning (Unfreezing last {cfg.UNFREEZE_BLOCKS} block, {cfg.TOTAL_EPOCHS - cfg.WARMUP_EPOCHS} epochs)...", flush=True)
+            raw_model.unfreeze_last_n_blocks(cfg.UNFREEZE_BLOCKS)
 
         trainable = sum(p.numel() for p in raw_model.parameters() if p.requires_grad)
         print(f"  Trainable: {trainable:,} / {total_params:,} parameters", flush=True)
@@ -867,7 +979,7 @@ def train(cfg: Config):
         for name, param in raw_model.named_parameters():
             if not param.requires_grad:
                 continue
-            if name.startswith("backbone"):
+            if "lora" in name or name.startswith("backbone"):
                 backbone_params.append(param)
             else:
                 head_params.append(param)
@@ -994,23 +1106,24 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
             comp_result = {
                 "generator": gen_name,
                 "condition": cond_name,
+                "fused_AUC": branch_metrics["fused"]["ROC-AUC"],
+                "fused_EER": branch_metrics["fused"]["EER"],
+                "fused_BPCER@1%": branch_metrics["fused"]["BPCER@APCER=1%"],
+                "calibrated_AUC": branch_metrics["calibrated"]["ROC-AUC"],
+                "calibrated_EER": branch_metrics["calibrated"]["EER"],
                 "spatial_AUC": branch_metrics["spatial"]["ROC-AUC"],
                 "spatial_EER": branch_metrics["spatial"]["EER"],
                 "freq_AUC": branch_metrics["frequency"]["ROC-AUC"],
                 "freq_EER": branch_metrics["frequency"]["EER"],
-                "fused_AUC": branch_metrics["fused"]["ROC-AUC"],
-                "fused_EER": branch_metrics["fused"]["EER"],
-                "ensemble_margin_AUC": branch_metrics["ensemble_margin"]["ROC-AUC"],
-                "ensemble_margin_EER": branch_metrics["ensemble_margin"]["EER"],
-                "ensemble_avg_AUC": branch_metrics["ensemble_avg"]["ROC-AUC"],
-                "ensemble_avg_EER": branch_metrics["ensemble_avg"]["EER"],
+                "ens_margin_AUC": branch_metrics["ensemble_margin"]["ROC-AUC"],
+                "ens_margin_EER": branch_metrics["ensemble_margin"]["EER"],
             }
             all_comparisons.append(comp_result)
 
+            print(f"    [Fused Head]  AUC: {branch_metrics['fused']['ROC-AUC']:.4f} | EER: {branch_metrics['fused']['EER']:.4f} | BPCER@1%: {branch_metrics['fused']['BPCER@APCER=1%']:.4f}", flush=True)
+            print(f"    [Calibrated]  AUC: {branch_metrics['calibrated']['ROC-AUC']:.4f} | EER: {branch_metrics['calibrated']['EER']:.4f} | BPCER@1%: {branch_metrics['calibrated']['BPCER@APCER=1%']:.4f}", flush=True)
             print(f"    [Spatial]     AUC: {branch_metrics['spatial']['ROC-AUC']:.4f} | EER: {branch_metrics['spatial']['EER']:.4f}", flush=True)
             print(f"    [Frequency]   AUC: {branch_metrics['frequency']['ROC-AUC']:.4f} | EER: {branch_metrics['frequency']['EER']:.4f}", flush=True)
-            print(f"    [Fused Head]  AUC: {branch_metrics['fused']['ROC-AUC']:.4f} | EER: {branch_metrics['fused']['EER']:.4f}", flush=True)
-            print(f"    [Ens(Margin)] AUC: {branch_metrics['ensemble_margin']['ROC-AUC']:.4f} | EER: {branch_metrics['ensemble_margin']['EER']:.4f} | BPCER@1%: {branch_metrics['ensemble_margin']['BPCER@APCER=1%']:.4f}", flush=True)
 
             # Honesty check
             if metrics["EER"] < 0.01:
@@ -1025,9 +1138,9 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
                 fpr_f, tpr_f, _ = roc_curve(labels, scores["margin_freq"])
                 plt.plot(fpr_f, tpr_f, label=f"Frequency (AUC: {branch_metrics['frequency']['ROC-AUC']:.3f})", linewidth=1.8, color="#2ca02c")
                 fpr_fuse, tpr_fuse, _ = roc_curve(labels, scores["margin_fused"])
-                plt.plot(fpr_fuse, tpr_fuse, label=f"Fused Head (AUC: {branch_metrics['fused']['ROC-AUC']:.3f})", linewidth=1.8, color="#ff7f0e")
-                fpr_ens, tpr_ens, _ = roc_curve(labels, scores["margin_ensemble"])
-                plt.plot(fpr_ens, tpr_ens, label=f"Calibrated Ens (AUC: {branch_metrics['ensemble_margin']['ROC-AUC']:.3f})", linewidth=2.5, color="#d62728")
+                plt.plot(fpr_fuse, tpr_fuse, label=f"Fused Head (AUC: {branch_metrics['fused']['ROC-AUC']:.3f})", linewidth=2.0, color="#ff7f0e")
+                fpr_cal, tpr_cal, _ = roc_curve(labels, scores["margin_calibrated"])
+                plt.plot(fpr_cal, tpr_cal, label=f"Calibrated (AUC: {branch_metrics['calibrated']['ROC-AUC']:.3f})", linewidth=2.5, color="#9467bd")
 
                 plt.xlabel("BPCER (False Positive Rate)")
                 plt.ylabel("1 - APCER (True Positive Rate)")
