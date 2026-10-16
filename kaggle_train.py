@@ -109,10 +109,11 @@ class Config:
 
     # LoRA Configuration for DINOv2 (Stream A)
     USE_LORA = True
-    LORA_R = 8         # Rank dimension
-    LORA_ALPHA = 16.0  # Scaling factor (alpha / r = 2.0)
+    LORA_R = 16        # Higher rank for dense forensic texture adaptation
+    LORA_ALPHA = 32.0  # Scaling factor (alpha / r = 2.0)
     LORA_DROPOUT = 0.05
-    LORA_BLOCKS = 4    # Apply LoRA to last 4 blocks (blocks 8, 9, 10, 11)
+    LORA_BLOCKS = 6    # Adapt the last 6 transformer blocks (blocks 6 to 11)
+    LORA_TARGET_MLP = True  # Adapt both self-attention and feed-forward MLP layers
 
     # ArcFace
     ARCFACE_S = 32.0
@@ -125,13 +126,13 @@ class Config:
     NUM_WORKERS = 0  # 0 workers eliminates multiprocessing IPC deadlocks on Kaggle
     PIN_MEMORY = False  # Avoids CUDA allocator deadlocks
     WARMUP_EPOCHS = 4  # 4 epochs head + frequency encoder training (~8-10 min)
-    TOTAL_EPOCHS = 6  # 6 epochs total (4 warmup + 2 fine-tuning, ~14 min)
+    TOTAL_EPOCHS = 8  # 8 epochs total (4 warmup + 4 fine-tuning epochs, ~30-35 min)
     HEAD_LR = 1e-3
     FINETUNE_HEAD_LR = 1e-4
     FINETUNE_BACKBONE_LR = 1e-4  # Optimal learning rate for LoRA adapter matrices
     WEIGHT_DECAY = 1e-3  # Stronger L2 regularization
     UNFREEZE_BLOCKS = 1  # Fallback if USE_LORA is False
-    MAX_RUNTIME_MINUTES = 30  # Hard safety ceiling: exits cleanly if training ever exceeds 30m
+    MAX_RUNTIME_MINUTES = 90  # Overnight ceiling: allows full 8 epochs to finish cleanly
 
     # Validation split
     VAL_FRACTION = 0.2
@@ -492,9 +493,14 @@ class FrequencyResidualStream(nn.Module):
         )
 
     def forward(self, x):
-        # Extract high-pass residual on GPU
-        res = self.hp_filter(x)
-        c1 = self.conv1(res)
+        # Extract rectified multi-directional high-pass residual on GPU
+        res = torch.abs(self.hp_filter(x))
+        # Extract 2D Haar Wavelet high-high diagonal sub-band (StyleGAN Nyquist checkerboards)
+        x_hh = torch.abs((x[:, :, 0::2, 0::2] - x[:, :, 0::2, 1::2] - x[:, :, 1::2, 0::2] + x[:, :, 1::2, 1::2]) / 2.0)
+        x_hh_up = F.interpolate(x_hh, size=res.shape[-2:], mode="bilinear", align_corners=False)
+        composite = 0.5 * res + 0.5 * x_hh_up
+
+        c1 = self.conv1(composite)
         c2 = self.conv2(c1)
         c3 = self.conv3(c2)
         c4 = self.conv4(c3)
@@ -546,15 +552,22 @@ class MorphDetector(nn.Module):
         # ---- Stream B: Frequency Residual Stream ----
         self.freq_stream = FrequencyResidualStream(out_dim=cfg.FREQ_DIM)
 
-        # ---- Dual-Stream Fusion Head ----
-        fused_dim = cfg.SPATIAL_DIM + cfg.FREQ_DIM
+        # ---- Dual-Stream Adaptive Gated Fusion Head ----
+        self.freq_align = nn.Sequential(
+            nn.Linear(cfg.FREQ_DIM, cfg.SPATIAL_DIM),
+            nn.BatchNorm1d(cfg.SPATIAL_DIM),
+            nn.GELU(),
+        )
+        self.gate = nn.Sequential(
+            nn.Linear(cfg.SPATIAL_DIM * 2, cfg.SPATIAL_DIM),
+            nn.BatchNorm1d(cfg.SPATIAL_DIM),
+            nn.Sigmoid(),
+        )
         self.fusion = nn.Sequential(
-            nn.Linear(fused_dim, cfg.PROJ_DIM),
+            nn.Linear(cfg.SPATIAL_DIM, cfg.PROJ_DIM),
             nn.BatchNorm1d(cfg.PROJ_DIM),
             nn.GELU(),
             nn.Dropout(0.2),
-            nn.Linear(cfg.PROJ_DIM, cfg.PROJ_DIM),
-            nn.BatchNorm1d(cfg.PROJ_DIM),
         )
 
         # ---- Multi-Branch ArcFace Classification Heads ----
@@ -580,10 +593,11 @@ class MorphDetector(nn.Module):
         # ---- Stream A: LoRA Adaptation ----
         self.lora_params = []
         if getattr(cfg, "USE_LORA", False):
-            self.apply_lora(cfg.LORA_BLOCKS, cfg.LORA_R, cfg.LORA_ALPHA, cfg.LORA_DROPOUT)
+            target_mlp = getattr(cfg, "LORA_TARGET_MLP", True)
+            self.apply_lora(cfg.LORA_BLOCKS, cfg.LORA_R, cfg.LORA_ALPHA, cfg.LORA_DROPOUT, target_mlp=target_mlp)
 
-    def apply_lora(self, num_blocks: int, r: int, alpha: float, dropout: float = 0.05):
-        """Inject LoRA adapters into the last num_blocks of the ViT backbone."""
+    def apply_lora(self, num_blocks: int, r: int, alpha: float, dropout: float = 0.05, target_mlp: bool = True):
+        """Inject LoRA adapters into the last num_blocks of the ViT backbone (attention and MLP)."""
         self.lora_params = []
         if not hasattr(self.backbone, "blocks"):
             print("  [LoRA Warning] Backbone has no .blocks attribute. Skipping LoRA.", flush=True)
@@ -599,8 +613,15 @@ class MorphDetector(nn.Module):
                 if hasattr(block.attn, "proj") and isinstance(block.attn.proj, nn.Linear):
                     block.attn.proj = LoRALinear(block.attn.proj, r=r, lora_alpha=alpha, lora_dropout=dropout)
                     self.lora_params.extend([block.attn.proj.lora_A, block.attn.proj.lora_B])
+            if target_mlp and hasattr(block, "mlp"):
+                if hasattr(block.mlp, "fc1") and isinstance(block.mlp.fc1, nn.Linear):
+                    block.mlp.fc1 = LoRALinear(block.mlp.fc1, r=r, lora_alpha=alpha, lora_dropout=dropout)
+                    self.lora_params.extend([block.mlp.fc1.lora_A, block.mlp.fc1.lora_B])
+                if hasattr(block.mlp, "fc2") and isinstance(block.mlp.fc2, nn.Linear):
+                    block.mlp.fc2 = LoRALinear(block.mlp.fc2, r=r, lora_alpha=alpha, lora_dropout=dropout)
+                    self.lora_params.extend([block.mlp.fc2.lora_A, block.mlp.fc2.lora_B])
 
-        print(f"  Applied LoRA (r={r}, alpha={alpha}) to last {num_blocks} ViT blocks ({len(self.lora_params)} adapter tensors).", flush=True)
+        print(f"  Applied LoRA (r={r}, alpha={alpha}, target_mlp={target_mlp}) to last {num_blocks} ViT blocks ({len(self.lora_params)} adapter tensors).", flush=True)
 
     def freeze_backbone(self):
         for param in self.backbone.parameters():
@@ -648,7 +669,9 @@ class MorphDetector(nn.Module):
 
         z_spatial = self.spatial_projector(spatial_feat)  # (B, SPATIAL_DIM)
         z_freq = self.freq_stream(x)                      # (B, FREQ_DIM)
-        z_fused = torch.cat([z_spatial, z_freq], dim=1)  # (B, SPATIAL_DIM + FREQ_DIM)
+        f_aligned = self.freq_align(z_freq)              # (B, SPATIAL_DIM)
+        gate = self.gate(torch.cat([z_spatial, f_aligned], dim=1))  # (B, SPATIAL_DIM) in [0, 1]
+        z_fused = z_spatial + gate * f_aligned            # Non-negative additive reinforcement
         proj = self.fusion(z_fused)                       # (B, PROJ_DIM)
 
         if labels is not None:
@@ -848,16 +871,16 @@ def validate(model, loader, device):
     else:
         score_arrays["margin_calibrated"] = score_arrays["margin_fused"]
 
-    # Primary metric uses the joint fused head margin
-    metrics = compute_all_metrics(all_labels, score_arrays["margin_fused"])
+    # Primary metric uses the calibrated decision fusion
+    metrics = compute_all_metrics(all_labels, score_arrays["margin_calibrated"])
     metrics["val_loss"] = total_loss / max(1, total_count)
 
     # Detailed metrics for each branch
     branch_metrics = {
         "spatial": compute_all_metrics(all_labels, score_arrays["margin_spatial"]),
         "frequency": compute_all_metrics(all_labels, score_arrays["margin_freq"]),
-        "fused": metrics,
-        "calibrated": compute_all_metrics(all_labels, score_arrays["margin_calibrated"]),
+        "fused": compute_all_metrics(all_labels, score_arrays["margin_fused"]),
+        "calibrated": metrics,
         "ensemble_margin": compute_all_metrics(all_labels, score_arrays["margin_ensemble"]),
         "ensemble_avg": compute_all_metrics(all_labels, score_arrays["prob_ensemble_avg"]),
     }
@@ -1100,7 +1123,17 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
                                 num_workers=cfg.NUM_WORKERS, pin_memory=cfg.PIN_MEMORY)
             metrics, labels, scores, branch_metrics = validate(model, loader, cfg.DEVICE)
 
-            result = {"generator": gen_name, "condition": cond_name, **metrics}
+            result = {
+                "generator": gen_name,
+                "condition": cond_name,
+                **metrics,
+                "spatial_AUC": branch_metrics["spatial"]["ROC-AUC"],
+                "spatial_EER": branch_metrics["spatial"]["EER"],
+                "freq_AUC": branch_metrics["frequency"]["ROC-AUC"],
+                "freq_EER": branch_metrics["frequency"]["EER"],
+                "fused_AUC": branch_metrics["fused"]["ROC-AUC"],
+                "fused_EER": branch_metrics["fused"]["EER"],
+            }
             all_results.append(result)
 
             comp_result = {
