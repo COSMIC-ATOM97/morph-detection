@@ -205,6 +205,8 @@ def extract_archive_if_needed(archive_path: str, target_dir: str, check_indicato
         return target_dir
 
     print(f"  [Extraction] Unpacking {archive_path} -> {target_dir} for fast local I/O...", flush=True)
+    print(f"  [Notice] One-time scratch extraction in progress (~1.5-2.5 min for 4.5GB). Replacing 10+ hours of FUSE seeks...", flush=True)
+    sys.stdout.flush()
     t0 = time.time()
 
     # Try system unzip first (fastest C implementation on Linux)
@@ -1428,6 +1430,16 @@ def auto_detect_datasets(cfg: Config):
 
 def main():
     start_all = time.time()
+    print("=" * 65, flush=True)
+    print(">>> DUAL-STREAM UID-MAD PIPELINE INITIALIZING <<<", flush=True)
+    print(f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}", flush=True)
+    print(f"PyTorch Version: {torch.__version__} | CUDA Available: {torch.cuda.is_available()}", flush=True)
+    if torch.cuda.is_available():
+        gpu_count = torch.cuda.device_count()
+        gpu_name = torch.cuda.get_device_name(0)
+        print(f"Hardware Accelerator: {gpu_count}x {gpu_name}", flush=True)
+    print("=" * 65, flush=True)
+
     cfg = Config()
 
     import argparse
