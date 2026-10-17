@@ -4,13 +4,23 @@ Dual-Stream UID-MAD (Phase 2): Spatial DINOv2 + Frequency Residual
 Self-contained Kaggle Training & Cross-Dataset Evaluation Script.
 
 Architecture:
-  - Stream A (Spatial): DINOv2 ViT-S/14 Dense Patch Statistics (1536 -> 256-d)
-  - Stream B (Frequency): Laplacian High-Pass Residual ConvNet (128-d)
-  - Fusion: Concat(256 + 128) -> Linear/BN/GELU/Dropout (256-d)
+  - Stream A (Spatial): DINOv2 ViT-S/14 Dense Patch Statistics + Rank-16 LoRA (1536 -> 256-d)
+  - Stream B (Frequency): Laplacian High-Pass + Rectified Haar Wavelet ConvNet (128-d)
+  - Fusion: Dual-Stream Adaptive Gated Fusion Head (256-d)
   - Classification: Additive Angular Margin Head (ArcFace: s=32.0, m=0.25)
 
+Key Engineering Optimizations for Kaggle:
+  - Automatic scratch extraction: unpacks 4.5GB SMDD zip once to local NVMe/RAM disk (/tmp)
+    eliminating FUSE random-seek latency that previously caused 10+ hour runtimes.
+  - Factorized LoRA computation: O(r) low-rank forward avoiding dense matrix materialization.
+  - Numerically stable ArcFace: trigonometric angle addition avoiding acos NaN spikes in FP16.
+  - Multi-process DataLoader: 2 workers with pinned memory on extracted local storage.
+  - Real-time logging & heartbeat: batch progress every 20 steps + 25s heartbeat preventing silent gaps.
+  - Incremental CSV checkpointing: writes frll_results.csv after every generator/condition.
+  - Safe runtime ceiling: cleanly completes evaluation and saves all outputs before Kaggle session cutoff.
+
 Usage on Kaggle:
-    1. Select Accelerator: GPU T4 x2.
+    1. Select Accelerator: GPU T4 x2 (or GPU P100 / T4 x1).
     2. Paste this script into a notebook cell.
     3. Run interactively or click 'Save Version' -> 'Save & Run All (Commit)'.
     4. Outputs are saved to /kaggle/working/ (frll_results.csv, best_model.pt, roc_*.png).
@@ -19,6 +29,21 @@ Usage on Kaggle:
 import os
 import sys
 import time
+import socket
+import io
+import csv
+import math
+import json
+import random
+import zipfile
+import shutil
+import subprocess
+import warnings
+from pathlib import Path
+from collections import defaultdict
+
+# Network timeout so downloads/clones never hang indefinitely
+socket.setdefaulttimeout(30)
 
 # Force line buffering on standard outputs so logs appear immediately
 if hasattr(sys.stdout, "reconfigure"):
@@ -40,16 +65,6 @@ try:
     cv2.ocl.setUseOpenCL(False)
 except Exception:
     pass
-
-import io
-import csv
-import math
-import json
-import random
-import zipfile
-import warnings
-from pathlib import Path
-from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -99,6 +114,10 @@ class Config:
     SMDD_ZIP = "/kaggle/input/smdd-morph/SMDD_release_train.zip"
     FRLL_ZIP = "/kaggle/input/frll-morphs/drive-download-20261010T174433Z-1-001.zip"
     OUTPUT_DIR = "/kaggle/working"
+    SCRATCH_DIR = "/tmp"  # Fast local RAM/NVMe scratch space on Kaggle
+
+    # Fast dataset extraction to eliminate Kaggle FUSE seek latency
+    EXTRACT_DATASETS = True
 
     # Backbone & Dual-Stream Dimensions
     BACKBONE = "vit_small_patch14_dinov2.lvd142m"  # timm model name
@@ -118,21 +137,25 @@ class Config:
     # ArcFace
     ARCFACE_S = 32.0
     ARCFACE_M = 0.25  # Softer margin to prevent overconfidence on synthetic data
-    NUM_CLASSES = 2  # bonafide vs morph
+    NUM_CLASSES = 2   # bonafide vs morph
 
     # Training
     IMG_SIZE = 224
     BATCH_SIZE = 64
-    NUM_WORKERS = 0  # 0 workers eliminates multiprocessing IPC deadlocks on Kaggle
-    PIN_MEMORY = False  # Avoids CUDA allocator deadlocks
+    NUM_WORKERS = 2  # 2 workers for extracted dataset (optimal for 2-vCPU Kaggle instance)
+    PIN_MEMORY = True  # Faster CUDA page-locked memory transfer
     WARMUP_EPOCHS = 4  # 4 epochs head + frequency encoder training (~8-10 min)
-    TOTAL_EPOCHS = 8  # 8 epochs total (4 warmup + 4 fine-tuning epochs, ~30-35 min)
+    TOTAL_EPOCHS = 8   # 8 epochs total (4 warmup + 4 fine-tuning epochs, ~20-25 min)
     HEAD_LR = 1e-3
     FINETUNE_HEAD_LR = 1e-4
     FINETUNE_BACKBONE_LR = 1e-4  # Optimal learning rate for LoRA adapter matrices
     WEIGHT_DECAY = 1e-3  # Stronger L2 regularization
     UNFREEZE_BLOCKS = 1  # Fallback if USE_LORA is False
-    MAX_RUNTIME_MINUTES = 90  # Overnight ceiling: allows full 8 epochs to finish cleanly
+    MAX_RUNTIME_MINUTES = 90  # Hard safety ceiling: exits cleanly before Kaggle cutoff
+
+    # Logging & Monitoring responsiveness
+    LOG_INTERVAL_BATCHES = 20  # Print progress every 20 batches
+    LOG_INTERVAL_SEC = 25      # Heartbeat print if 25s pass without a step log
 
     # Validation split
     VAL_FRACTION = 0.2
@@ -158,6 +181,56 @@ def seed_everything(seed: int):
 
 
 # ---------------------------------------------------------------------------
+# Dataset Extraction Helper (Eliminates Kaggle FUSE Zip Bottleneck)
+# ---------------------------------------------------------------------------
+
+def extract_archive_if_needed(archive_path: str, target_dir: str, check_indicator: str) -> str:
+    """
+    Extracts a zip archive to a fast local scratch directory if not already extracted.
+    Eliminates 90%+ of training time caused by random seeks in 4.5GB archives over Kaggle FUSE mounts.
+    """
+    if not os.path.exists(archive_path):
+        return archive_path
+
+    if os.path.isdir(archive_path):
+        return archive_path
+
+    if not (os.path.isfile(archive_path) and zipfile.is_zipfile(archive_path)):
+        return archive_path
+
+    os.makedirs(target_dir, exist_ok=True)
+    check_path = os.path.join(target_dir, check_indicator)
+    if os.path.exists(check_path):
+        print(f"  [Cache hit] Using existing extracted dataset at: {target_dir}", flush=True)
+        return target_dir
+
+    print(f"  [Extraction] Unpacking {archive_path} -> {target_dir} for fast local I/O...", flush=True)
+    t0 = time.time()
+
+    # Try system unzip first (fastest C implementation on Linux)
+    extracted_ok = False
+    try:
+        ret = subprocess.run(["unzip", "-q", "-n", archive_path, "-d", target_dir], capture_output=True, timeout=300)
+        if ret.returncode == 0 and os.path.exists(check_path):
+            extracted_ok = True
+    except Exception:
+        pass
+
+    if not extracted_ok:
+        try:
+            with zipfile.ZipFile(archive_path, "r") as zf:
+                zf.extractall(target_dir)
+            extracted_ok = True
+        except Exception as e:
+            print(f"  [Warning] Extraction failed ({e}); falling back to direct zip reading.", flush=True)
+            return archive_path
+
+    elapsed = time.time() - t0
+    print(f"  [Extraction done] Finished in {elapsed:.1f}s ({target_dir})", flush=True)
+    return target_dir
+
+
+# ---------------------------------------------------------------------------
 # Augmentations
 # ---------------------------------------------------------------------------
 
@@ -177,7 +250,7 @@ def get_train_transforms(img_size: int) -> A.Compose:
     aug_list = [
         A.Resize(img_size, img_size),
         A.HorizontalFlip(p=0.5),
-        # Mutually exclusive heavy degradation to keep CPU decode time under 6ms
+        # Mutually exclusive heavy degradation to keep CPU decode time fast
         A.OneOf([
             A.ImageCompression(quality_lower=20, quality_upper=80, p=1.0),
             A.GaussianBlur(blur_limit=(3, 5), sigma_limit=(0.1, 2.0), p=1.0),
@@ -236,11 +309,11 @@ def get_degraded_transforms(img_size: int, mode: str = "jpeg") -> A.Compose:
 
 
 # ---------------------------------------------------------------------------
-# Datasets (Supports both .zip archives and extracted folders)
+# Datasets (Supports both fast local directories and .zip fallback)
 # ---------------------------------------------------------------------------
 
 class SMDDDataset(Dataset):
-    """Reads SMDD images from a zip archive or an extracted directory using train.csv metadata."""
+    """Reads SMDD images from an extracted directory (fast) or zip archive (fallback)."""
 
     def __init__(self, data_source: str, entries: list, transform=None):
         self.data_source = data_source
@@ -279,7 +352,7 @@ class SMDDDataset(Dataset):
 
 
 class FRLLDataset(Dataset):
-    """Reads FRLL-Morphs images from a zip archive or an extracted directory for evaluation."""
+    """Reads FRLL-Morphs images from an extracted directory (fast) or zip archive (fallback)."""
 
     def __init__(self, data_source: str, bonafide_paths: list, morph_paths: list, transform=None):
         self.data_source = data_source
@@ -318,13 +391,18 @@ class FRLLDataset(Dataset):
 
 
 def load_smdd_entries(data_source: str):
-    """Parse train.csv inside the SMDD zip or directory and return list of (rel_path, label_int)."""
+    """Parse train.csv inside SMDD directory or zip archive."""
     if os.path.isfile(data_source) and zipfile.is_zipfile(data_source):
         with zipfile.ZipFile(data_source, "r") as zf:
             csv_bytes = zf.read("train.csv").decode("utf-8")
         reader = csv.DictReader(io.StringIO(csv_bytes))
     else:
         csv_file = os.path.join(data_source, "train.csv")
+        if not os.path.exists(csv_file):
+            for root, _, files in os.walk(data_source):
+                if "train.csv" in files:
+                    csv_file = os.path.join(root, "train.csv")
+                    break
         with open(csv_file, "r", encoding="utf-8") as f:
             reader = list(csv.DictReader(f))
 
@@ -369,9 +447,11 @@ class LoRALinear(nn.Module):
     """
     Low-Rank Adaptation (LoRA) layer wrapping a standard nn.Linear.
     Keeps pretrained weights frozen and trains rank decomposition matrices A and B.
+    Factorized forward: (dropout(x) @ A^T) @ B^T * scaling
+    Avoids materializing large (out_features, in_features) matrices and cuts memory/FLOPs.
     """
 
-    def __init__(self, original_linear: nn.Linear, r: int = 8, lora_alpha: float = 16.0, lora_dropout: float = 0.05):
+    def __init__(self, original_linear: nn.Linear, r: int = 16, lora_alpha: float = 32.0, lora_dropout: float = 0.05):
         super().__init__()
         self.linear = original_linear
         self.linear.weight.requires_grad = False
@@ -391,17 +471,25 @@ class LoRALinear(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         base = self.linear(x)
-        lora = F.linear(self.dropout(x), self.lora_B @ self.lora_A) * self.scaling
-        return base + lora
+        # Factorized low-rank projection
+        # x shape: (..., in_features)
+        # (dropout(x) @ lora_A.t()) -> (..., r)
+        # (... @ lora_B.t()) -> (..., out_features)
+        lora_out = (self.dropout(x) @ self.lora_A.t()) @ self.lora_B.t() * self.scaling
+        return base + lora_out
 
 
 class ArcFaceHead(nn.Module):
-    """Additive angular margin classification head."""
+    """Additive angular margin classification head with numerical stability threshold."""
 
-    def __init__(self, in_features: int, num_classes: int, s: float = 30.0, m: float = 0.35):
+    def __init__(self, in_features: int, num_classes: int, s: float = 32.0, m: float = 0.25):
         super().__init__()
         self.s = s
         self.m = m
+        self.cos_m = math.cos(m)
+        self.sin_m = math.sin(m)
+        self.threshold = math.cos(math.pi - m)
+        self.mm = math.sin(math.pi - m) * m
         self.weight = nn.Parameter(torch.empty(num_classes, in_features))
         nn.init.xavier_uniform_(self.weight)
 
@@ -413,16 +501,18 @@ class ArcFaceHead(nn.Module):
         return cosine[:, 1] - cosine[:, 0]
 
     def forward(self, embeddings: torch.Tensor, labels: torch.Tensor = None):
-        # L2-normalize weight and embedding
         w = F.normalize(self.weight, dim=1)
         x = F.normalize(embeddings, dim=1)
         cosine = F.linear(x, w)  # (B, num_classes)
 
         if labels is not None:
-            # Add angular margin to the target class
-            theta = torch.acos(torch.clamp(cosine, -1.0 + 1e-7, 1.0 - 1e-7))
+            # Add angular margin to target class with boundary stabilization
+            sine = torch.sqrt(torch.clamp(1.0 - cosine * cosine, 1e-7, 1.0))
+            phi = cosine * self.cos_m - sine * self.sin_m  # cos(theta + m)
+            # When theta + m > pi, use smooth Taylor fallback to preserve monotonicity
+            phi = torch.where(cosine > self.threshold, phi, cosine - self.mm)
             one_hot = F.one_hot(labels, num_classes=cosine.size(1)).float()
-            logits = torch.cos(theta + one_hot * self.m)
+            logits = (one_hot * phi) + ((1.0 - one_hot) * cosine)
             logits = logits * self.s
         else:
             logits = cosine * self.s
@@ -432,7 +522,7 @@ class ArcFaceHead(nn.Module):
 
 class FrequencyResidualStream(nn.Module):
     """
-    Stream B: Multi-directional high-pass residual filter + Multi-scale Conv encoder.
+    Stream B: Multi-directional high-pass residual filter + 2D Haar Wavelet + Multi-scale Conv encoder.
     Isolates generator noise, checkerboard upsampling artifacts, and frequency anomalies.
     """
 
@@ -536,7 +626,12 @@ class MorphDetector(nn.Module):
 
         if not backbone_loaded:
             print("  Falling back to torch.hub for DINOv2 (dinov2_vits14)...", flush=True)
-            self.backbone = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
+            try:
+                self.backbone = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
+                backbone_loaded = True
+            except Exception as e:
+                print(f"  [Warning] torch.hub load failed ({e}). Initializing backbone architecture offline.", flush=True)
+                self.backbone = timm.create_model("vit_small_patch14_dinov2", pretrained=False, num_classes=0, dynamic_img_size=True)
 
         # Multi-scale patch feature dimension: CLS (384) + Mean (384) + Std (384) + Max (384) = 1536
         in_dim = cfg.EMBED_DIM * 4
@@ -651,18 +746,29 @@ class MorphDetector(nn.Module):
     def forward(self, x, labels=None, return_scores=False):
         # Stream A (Spatial): Multi-scale patch statistics
         if hasattr(self.backbone, "forward_features"):
-            tokens = self.backbone.forward_features(x)
-            if tokens.dim() == 3 and tokens.size(1) > 1:
-                cls_token = tokens[:, 0]
-                patches = tokens[:, 1:]
+            feats = self.backbone.forward_features(x)
+            if isinstance(feats, dict):
+                cls_token = feats["x_norm_clstoken"]
+                patches = feats["x_norm_patchtokens"]
                 patch_mean = patches.mean(dim=1)
                 patch_std = patches.std(dim=1)
                 patch_max = patches.max(dim=1).values
                 spatial_feat = torch.cat([cls_token, patch_mean, patch_std, patch_max], dim=1)
-            elif tokens.dim() == 2:
-                spatial_feat = tokens.repeat(1, 4)
+            elif isinstance(feats, torch.Tensor):
+                if feats.dim() == 3 and feats.size(1) > 1:
+                    cls_token = feats[:, 0]
+                    patches = feats[:, 1:]
+                    patch_mean = patches.mean(dim=1)
+                    patch_std = patches.std(dim=1)
+                    patch_max = patches.max(dim=1).values
+                    spatial_feat = torch.cat([cls_token, patch_mean, patch_std, patch_max], dim=1)
+                elif feats.dim() == 2:
+                    spatial_feat = feats.repeat(1, 4)
+                else:
+                    spatial_feat = feats[:, 0].repeat(1, 4)
             else:
-                spatial_feat = tokens[:, 0].repeat(1, 4)
+                cls_token = self.backbone(x)
+                spatial_feat = cls_token.repeat(1, 4)
         else:
             cls_token = self.backbone(x)
             spatial_feat = cls_token.repeat(1, 4)
@@ -778,23 +884,27 @@ def compute_all_metrics(labels: np.ndarray, scores: np.ndarray) -> dict:
 # ---------------------------------------------------------------------------
 
 def build_sampler(entries: list) -> WeightedRandomSampler:
-    """Build a weighted sampler to handle 5:3 class imbalance in SMDD."""
+    """Build a weighted sampler to handle class imbalance."""
     labels = [e[1] for e in entries]
     class_counts = np.bincount(labels)
-    class_weights = 1.0 / class_counts
+    class_weights = 1.0 / np.maximum(1, class_counts)
     sample_weights = [class_weights[l] for l in labels]
     return WeightedRandomSampler(sample_weights, num_samples=len(entries), replacement=True)
 
 
-def train_one_epoch(model, loader, optimizer, scaler, device, epoch, start_time, max_runtime_sec):
+def train_one_epoch(model, loader, optimizer, scaler, device, epoch, start_time, max_runtime_sec,
+                    log_interval_batches=20, log_interval_sec=25):
     model.train()
     total_loss = 0.0
     correct = 0
     total = 0
     epoch_start = time.time()
+    last_log_time = epoch_start
+    total_batches = len(loader)
 
     for batch_idx, (images, labels) in enumerate(loader):
-        if time.time() - start_time > max_runtime_sec:
+        curr_time = time.time()
+        if curr_time - start_time > max_runtime_sec:
             print(f"  [SAFETY CEILING REACHED] Exiting epoch {epoch} early after {batch_idx} batches.", flush=True)
             break
 
@@ -819,25 +929,32 @@ def train_one_epoch(model, loader, optimizer, scaler, device, epoch, start_time,
         correct += (preds == labels).sum().item()
         total += images.size(0)
 
-        if (batch_idx + 1) % 50 == 0 or (batch_idx + 1) == len(loader):
-            elapsed_epoch = time.time() - epoch_start
+        # Responsive logging: log at regular batch steps OR when heartbeat threshold expires
+        is_step = ((batch_idx + 1) % log_interval_batches == 0) or ((batch_idx + 1) == total_batches)
+        is_heartbeat = (curr_time - last_log_time >= log_interval_sec)
+        if is_step or is_heartbeat:
+            elapsed_epoch = curr_time - epoch_start
             rate = (batch_idx + 1) / max(0.001, elapsed_epoch)
-            print(f"  Epoch {epoch:2d} | Batch {batch_idx+1:3d}/{len(loader)} | "
+            pct = 100.0 * (batch_idx + 1) / max(1, total_batches)
+            print(f"  Epoch {epoch:2d} [{pct:5.1f}%] | Batch {batch_idx+1:3d}/{total_batches} | "
                   f"Loss: {loss.item():.4f} | Acc: {correct/max(1, total):.4f} | "
-                  f"{rate:.1f} it/s | Total Elapsed: {(time.time() - start_time)/60:.1f}m", flush=True)
+                  f"{rate:.1f} batch/s | Elapsed: {(curr_time - start_time)/60:.1f}m", flush=True)
+            last_log_time = curr_time
 
     return total_loss / max(1, total), correct / max(1, total)
 
 
 @torch.no_grad()
-def validate(model, loader, device):
+def validate(model, loader, device, desc="Validation"):
     model.eval()
     all_labels = []
     collected_scores = defaultdict(list)
     total_loss = 0.0
     total_count = 0
+    t0 = time.time()
+    total_batches = len(loader)
 
-    for images, labels in loader:
+    for idx, (images, labels) in enumerate(loader):
         images = images.to(device, non_blocking=True)
         labels_dev = labels.to(device, non_blocking=True)
         with autocast_ctx():
@@ -851,6 +968,10 @@ def validate(model, loader, device):
         for k in ["margin_spatial", "margin_freq", "margin_fused", "margin_ensemble",
                   "prob_spatial", "prob_freq", "prob_fused", "prob_ensemble_avg", "prob_ensemble_max"]:
             collected_scores[k].append(out[k].cpu().numpy())
+
+        # Validation heartbeat for long iterations
+        if total_batches > 25 and (((idx + 1) % max(1, total_batches // 4) == 0) or ((idx + 1) == total_batches)):
+            print(f"    [{desc}] Processed batch {idx+1}/{total_batches} ({time.time()-t0:.1f}s)", flush=True)
 
     all_labels = np.concatenate(all_labels)
     score_arrays = {k: np.concatenate(v) for k, v in collected_scores.items()}
@@ -889,7 +1010,7 @@ def validate(model, loader, device):
 
 
 def train(cfg: Config):
-    """Full two-stage training pipeline with automatic multi-GPU support."""
+    """Full two-stage training pipeline with automatic multi-GPU support and safety monitoring."""
     seed_everything(cfg.SEED)
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
 
@@ -899,6 +1020,7 @@ def train(cfg: Config):
     print("=" * 60, flush=True)
     print("Dual-Stream UID-MAD (Spatial + Frequency) -- Training", flush=True)
     print(f"  Available GPUs: {num_gpus} | Effective Batch Size: {effective_bs}", flush=True)
+    print(f"  DataLoader Workers: {cfg.NUM_WORKERS} | Pin Memory: {cfg.PIN_MEMORY}", flush=True)
     print(f"  Max Runtime Guard: {cfg.MAX_RUNTIME_MINUTES} minutes", flush=True)
     print("=" * 60, flush=True)
 
@@ -924,18 +1046,24 @@ def train(cfg: Config):
     val_ds = SMDDDataset(cfg.SMDD_ZIP, val_entries, transform=get_val_transforms(cfg.IMG_SIZE))
 
     sampler = build_sampler(train_entries)
-    train_loader = DataLoader(train_ds, batch_size=effective_bs, sampler=sampler,
-                              num_workers=cfg.NUM_WORKERS, pin_memory=cfg.PIN_MEMORY, drop_last=True)
-    val_loader = DataLoader(val_ds, batch_size=effective_bs, shuffle=False,
-                            num_workers=cfg.NUM_WORKERS, pin_memory=cfg.PIN_MEMORY)
+    train_loader = DataLoader(
+        train_ds, batch_size=effective_bs, sampler=sampler,
+        num_workers=cfg.NUM_WORKERS, pin_memory=cfg.PIN_MEMORY, drop_last=True,
+        persistent_workers=(cfg.NUM_WORKERS > 0)
+    )
+    val_loader = DataLoader(
+        val_ds, batch_size=effective_bs, shuffle=False,
+        num_workers=cfg.NUM_WORKERS, pin_memory=cfg.PIN_MEMORY,
+        persistent_workers=(cfg.NUM_WORKERS > 0)
+    )
 
     # ---- Model ----
     print("\n[2/5] Building model...", flush=True)
     raw_model = MorphDetector(cfg).to(cfg.DEVICE)
     raw_model.freeze_backbone()
     print(f"  Stream A (Spatial): {cfg.BACKBONE} (frozen)", flush=True)
-    print(f"  Stream B (Frequency): Laplacian residual ConvNet -> {cfg.FREQ_DIM}-d", flush=True)
-    print(f"  Dual Fusion: Concat({cfg.SPATIAL_DIM} + {cfg.FREQ_DIM}) -> {cfg.PROJ_DIM}-d", flush=True)
+    print(f"  Stream B (Frequency): Laplacian + Wavelet ConvNet -> {cfg.FREQ_DIM}-d", flush=True)
+    print(f"  Dual Fusion: Gated Reinforcement -> {cfg.PROJ_DIM}-d", flush=True)
     print(f"  ArcFace Head: s={cfg.ARCFACE_S}, m={cfg.ARCFACE_M}", flush=True)
 
     trainable = sum(p.numel() for p in raw_model.parameters() if p.requires_grad)
@@ -965,8 +1093,11 @@ def train(cfg: Config):
             timed_out = True
             break
 
-        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, scaler, cfg.DEVICE, epoch, start_time, max_runtime_sec)
-        val_metrics, _, _, _ = validate(model, val_loader, cfg.DEVICE)
+        train_loss, train_acc = train_one_epoch(
+            model, train_loader, optimizer, scaler, cfg.DEVICE, epoch, start_time, max_runtime_sec,
+            log_interval_batches=cfg.LOG_INTERVAL_BATCHES, log_interval_sec=cfg.LOG_INTERVAL_SEC
+        )
+        val_metrics, _, _, _ = validate(model, val_loader, cfg.DEVICE, desc=f"Val-Epoch-{epoch}")
         print(f"  Epoch {epoch:2d}: loss={train_loss:.4f} acc={train_acc:.4f} | "
               f"val_EER={val_metrics['EER']:.4f} val_loss={val_metrics['val_loss']:.4f} val_AUC={val_metrics['ROC-AUC']:.4f}", flush=True)
         history.append({"epoch": epoch, "stage": 1, "train_loss": train_loss,
@@ -976,7 +1107,7 @@ def train(cfg: Config):
         val_l = val_metrics["val_loss"]
         if val_metrics["EER"] < best_eer:
             is_best = True
-        elif abs(val_metrics["EER"] - best_eer) < 1e-6 and val_l < best_loss:
+        elif abs(val_metrics["EER"] - best_eer) < 1e-4 and val_l < best_loss:
             is_best = True
 
         if is_best:
@@ -984,6 +1115,10 @@ def train(cfg: Config):
             best_loss = val_l
             torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "best_model.pt"))
             print(f"    -> New best model saved (EER: {best_eer:.4f}, val_loss: {best_loss:.4f})", flush=True)
+
+        torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "checkpoint_latest.pt"))
+
+    torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "stage1_final.pt"))
 
     # ---- Stage 2: Fine-tuning ----
     if not timed_out:
@@ -1020,9 +1155,12 @@ def train(cfg: Config):
                 print(f"\n[SAFETY STOP] Max runtime ({cfg.MAX_RUNTIME_MINUTES}m) exceeded. Stopping Stage 2.", flush=True)
                 break
 
-            train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, scaler, cfg.DEVICE, epoch, start_time, max_runtime_sec)
+            train_loss, train_acc = train_one_epoch(
+                model, train_loader, optimizer, scaler, cfg.DEVICE, epoch, start_time, max_runtime_sec,
+                log_interval_batches=cfg.LOG_INTERVAL_BATCHES, log_interval_sec=cfg.LOG_INTERVAL_SEC
+            )
             scheduler.step()
-            val_metrics, _, _, _ = validate(model, val_loader, cfg.DEVICE)
+            val_metrics, _, _, _ = validate(model, val_loader, cfg.DEVICE, desc=f"Val-Epoch-{epoch}")
             print(f"  Epoch {epoch:2d}: loss={train_loss:.4f} acc={train_acc:.4f} | "
                   f"val_EER={val_metrics['EER']:.4f} val_loss={val_metrics['val_loss']:.4f} val_AUC={val_metrics['ROC-AUC']:.4f}", flush=True)
             history.append({"epoch": epoch, "stage": 2, "train_loss": train_loss,
@@ -1032,7 +1170,7 @@ def train(cfg: Config):
             val_l = val_metrics["val_loss"]
             if val_metrics["EER"] < best_eer:
                 is_best = True
-            elif abs(val_metrics["EER"] - best_eer) < 1e-6 and val_l < best_loss:
+            elif abs(val_metrics["EER"] - best_eer) < 1e-4 and val_l < best_loss:
                 is_best = True
 
             if is_best:
@@ -1041,8 +1179,13 @@ def train(cfg: Config):
                 torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "best_model.pt"))
                 print(f"    -> New best model saved (EER: {best_eer:.4f}, val_loss: {best_loss:.4f})", flush=True)
 
+            torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "checkpoint_latest.pt"))
+
     # Save final model and training history
     torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "final_model.pt"))
+    if not os.path.exists(os.path.join(cfg.OUTPUT_DIR, "best_model.pt")):
+        torch.save(raw_model.state_dict(), os.path.join(cfg.OUTPUT_DIR, "best_model.pt"))
+
     pd.DataFrame(history).to_csv(os.path.join(cfg.OUTPUT_DIR, "training_history.csv"), index=False)
     elapsed_total = (time.time() - start_time) / 60.0
     print(f"\n  Training complete in {elapsed_total:.1f} minutes. Best validation EER: {best_eer:.4f}", flush=True)
@@ -1057,19 +1200,21 @@ def train(cfg: Config):
 def evaluate_frll(cfg: Config, model: nn.Module = None):
     """Evaluate best checkpoint on all FRLL-Morphs generator splits + degradation conditions."""
 
-    print("\n" + "=" * 60)
-    print("Cross-Dataset Evaluation on FRLL-Morphs (Multi-Branch UID-MAD)")
-    print("=" * 60)
+    print("\n" + "=" * 60, flush=True)
+    print("Cross-Dataset Evaluation on FRLL-Morphs (Multi-Branch UID-MAD)", flush=True)
+    print("=" * 60, flush=True)
 
     num_gpus = torch.cuda.device_count()
     effective_bs = cfg.BATCH_SIZE * max(1, num_gpus)
 
-    # Load best model
+    # Load best model if not provided
     if model is None:
         raw_model = MorphDetector(cfg).to(cfg.DEVICE)
         search_paths = [
             cfg.CKPT_TO_EVAL,
             os.path.join(cfg.OUTPUT_DIR, cfg.CKPT_TO_EVAL),
+            os.path.join(cfg.OUTPUT_DIR, "best_model.pt"),
+            os.path.join(cfg.OUTPUT_DIR, "final_model.pt"),
             os.path.join("checkpoints", cfg.CKPT_TO_EVAL),
             os.path.join(".", cfg.CKPT_TO_EVAL),
             "/kaggle/working/best_model.pt",
@@ -1103,25 +1248,36 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
     model.eval()
 
     bonafide_paths, generators = load_frll_paths(cfg.FRLL_ZIP)
-    print(f"  Bonafide: {len(bonafide_paths)} images")
+    print(f"  Bonafide: {len(bonafide_paths)} images", flush=True)
     for gen_name, paths in generators.items():
-        print(f"  {gen_name}: {len(paths)} images")
+        print(f"  {gen_name}: {len(paths)} images", flush=True)
 
     all_results = []
     all_comparisons = []
+    results_path = os.path.join(cfg.OUTPUT_DIR, "frll_results.csv")
+    comp_path = os.path.join(cfg.OUTPUT_DIR, "frll_results_comparison.csv")
+
     conditions = [
         ("clean", get_val_transforms(cfg.IMG_SIZE)),
         ("jpeg_q30", get_degraded_transforms(cfg.IMG_SIZE, mode="jpeg")),
         ("printscan", get_degraded_transforms(cfg.IMG_SIZE, mode="printscan")),
     ]
 
+    total_evals = len(generators) * len(conditions)
+    eval_count = 0
+
     for gen_name, morph_paths in generators.items():
         for cond_name, transform in conditions:
-            print(f"  Evaluating {gen_name} [{cond_name}]...", flush=True)
+            eval_count += 1
+            t_cond_start = time.time()
+            total_samples = len(bonafide_paths) + len(morph_paths)
+            print(f"\n  [{eval_count}/{total_evals}] Evaluating {gen_name} [{cond_name}] ({total_samples} images)...", flush=True)
             ds = FRLLDataset(cfg.FRLL_ZIP, bonafide_paths, morph_paths, transform=transform)
-            loader = DataLoader(ds, batch_size=effective_bs, shuffle=False,
-                                num_workers=cfg.NUM_WORKERS, pin_memory=cfg.PIN_MEMORY)
-            metrics, labels, scores, branch_metrics = validate(model, loader, cfg.DEVICE)
+            loader = DataLoader(
+                ds, batch_size=effective_bs, shuffle=False,
+                num_workers=cfg.NUM_WORKERS, pin_memory=cfg.PIN_MEMORY
+            )
+            metrics, labels, scores, branch_metrics = validate(model, loader, cfg.DEVICE, desc=f"{gen_name}_{cond_name}")
 
             result = {
                 "generator": gen_name,
@@ -1144,6 +1300,7 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
                 "fused_BPCER@1%": branch_metrics["fused"]["BPCER@APCER=1%"],
                 "calibrated_AUC": branch_metrics["calibrated"]["ROC-AUC"],
                 "calibrated_EER": branch_metrics["calibrated"]["EER"],
+                "calibrated_BPCER@1%": branch_metrics["calibrated"]["BPCER@APCER=1%"],
                 "spatial_AUC": branch_metrics["spatial"]["ROC-AUC"],
                 "spatial_EER": branch_metrics["spatial"]["EER"],
                 "freq_AUC": branch_metrics["frequency"]["ROC-AUC"],
@@ -1157,6 +1314,11 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
             print(f"    [Calibrated]  AUC: {branch_metrics['calibrated']['ROC-AUC']:.4f} | EER: {branch_metrics['calibrated']['EER']:.4f} | BPCER@1%: {branch_metrics['calibrated']['BPCER@APCER=1%']:.4f}", flush=True)
             print(f"    [Spatial]     AUC: {branch_metrics['spatial']['ROC-AUC']:.4f} | EER: {branch_metrics['spatial']['EER']:.4f}", flush=True)
             print(f"    [Frequency]   AUC: {branch_metrics['frequency']['ROC-AUC']:.4f} | EER: {branch_metrics['frequency']['EER']:.4f}", flush=True)
+            print(f"    Finished {gen_name} [{cond_name}] in {time.time()-t_cond_start:.1f}s", flush=True)
+
+            # INCREMENTAL SAVE: Save after every single evaluation so no progress is ever lost
+            pd.DataFrame(all_results).to_csv(results_path, index=False)
+            pd.DataFrame(all_comparisons).to_csv(comp_path, index=False)
 
             # Honesty check
             if metrics["EER"] < 0.01:
@@ -1164,33 +1326,33 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
 
             # Save multi-curve ROC comparison for clean condition
             if cond_name == "clean":
-                plt.figure(figsize=(7, 7))
-                plt.plot([0, 1], [0, 1], "k--", alpha=0.4, label="Random Guess (0.50)")
-                fpr_s, tpr_s, _ = roc_curve(labels, scores["margin_spatial"])
-                plt.plot(fpr_s, tpr_s, label=f"Spatial (AUC: {branch_metrics['spatial']['ROC-AUC']:.3f})", linewidth=1.8, color="#1f77b4")
-                fpr_f, tpr_f, _ = roc_curve(labels, scores["margin_freq"])
-                plt.plot(fpr_f, tpr_f, label=f"Frequency (AUC: {branch_metrics['frequency']['ROC-AUC']:.3f})", linewidth=1.8, color="#2ca02c")
-                fpr_fuse, tpr_fuse, _ = roc_curve(labels, scores["margin_fused"])
-                plt.plot(fpr_fuse, tpr_fuse, label=f"Fused Head (AUC: {branch_metrics['fused']['ROC-AUC']:.3f})", linewidth=2.0, color="#ff7f0e")
-                fpr_cal, tpr_cal, _ = roc_curve(labels, scores["margin_calibrated"])
-                plt.plot(fpr_cal, tpr_cal, label=f"Calibrated (AUC: {branch_metrics['calibrated']['ROC-AUC']:.3f})", linewidth=2.5, color="#9467bd")
+                try:
+                    plt.figure(figsize=(7, 7))
+                    plt.plot([0, 1], [0, 1], "k--", alpha=0.4, label="Random Guess (0.50)")
+                    fpr_s, tpr_s, _ = roc_curve(labels, scores["margin_spatial"])
+                    plt.plot(fpr_s, tpr_s, label=f"Spatial (AUC: {branch_metrics['spatial']['ROC-AUC']:.3f})", linewidth=1.8, color="#1f77b4")
+                    fpr_f, tpr_f, _ = roc_curve(labels, scores["margin_freq"])
+                    plt.plot(fpr_f, tpr_f, label=f"Frequency (AUC: {branch_metrics['frequency']['ROC-AUC']:.3f})", linewidth=1.8, color="#2ca02c")
+                    fpr_fuse, tpr_fuse, _ = roc_curve(labels, scores["margin_fused"])
+                    plt.plot(fpr_fuse, tpr_fuse, label=f"Fused Head (AUC: {branch_metrics['fused']['ROC-AUC']:.3f})", linewidth=2.0, color="#ff7f0e")
+                    fpr_cal, tpr_cal, _ = roc_curve(labels, scores["margin_calibrated"])
+                    plt.plot(fpr_cal, tpr_cal, label=f"Calibrated (AUC: {branch_metrics['calibrated']['ROC-AUC']:.3f})", linewidth=2.5, color="#9467bd")
 
-                plt.xlabel("BPCER (False Positive Rate)")
-                plt.ylabel("1 - APCER (True Positive Rate)")
-                plt.title(f"Multi-Stream ROC: {gen_name} (Clean)")
-                plt.grid(True, alpha=0.3)
-                plt.legend(loc="lower right", fontsize=10)
-                plt.tight_layout()
-                plt.savefig(os.path.join(cfg.OUTPUT_DIR, f"roc_{gen_name}.png"), dpi=150)
-                plt.close()
+                    plt.xlabel("BPCER (False Positive Rate)")
+                    plt.ylabel("1 - APCER (True Positive Rate)")
+                    plt.title(f"Multi-Stream ROC: {gen_name} (Clean)")
+                    plt.grid(True, alpha=0.3)
+                    plt.legend(loc="lower right", fontsize=10)
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(cfg.OUTPUT_DIR, f"roc_{gen_name}.png"), dpi=150)
+                    plt.close()
+                except Exception as e:
+                    print(f"    [Warning] Plotting failed for {gen_name}: {e}", flush=True)
 
-    # Save results tables
     results_df = pd.DataFrame(all_results)
-    results_df.to_csv(os.path.join(cfg.OUTPUT_DIR, "frll_results.csv"), index=False)
     comp_df = pd.DataFrame(all_comparisons)
-    comp_df.to_csv(os.path.join(cfg.OUTPUT_DIR, "frll_results_comparison.csv"), index=False)
-    print(f"\n  Results saved to {cfg.OUTPUT_DIR}/frll_results.csv", flush=True)
-    print(f"  Comparison table saved to {cfg.OUTPUT_DIR}/frll_results_comparison.csv", flush=True)
+    print(f"\n  Final results saved to {results_path}", flush=True)
+    print(f"  Final comparison table saved to {comp_path}", flush=True)
 
     # Print summary comparison table
     print("\n" + "=" * 80, flush=True)
@@ -1244,6 +1406,24 @@ def auto_detect_datasets(cfg: Config):
                     break
             if os.path.exists(cfg.FRLL_ZIP):
                 break
+
+    # Fast local scratch extraction
+    if getattr(cfg, "EXTRACT_DATASETS", True):
+        scratch_base = cfg.SCRATCH_DIR if os.path.isdir(cfg.SCRATCH_DIR) and os.access(cfg.SCRATCH_DIR, os.W_OK) else cfg.OUTPUT_DIR
+        if os.path.isfile(cfg.SMDD_ZIP) and zipfile.is_zipfile(cfg.SMDD_ZIP):
+            smdd_target = os.path.join(scratch_base, "smdd_extracted")
+            cfg.SMDD_ZIP = extract_archive_if_needed(cfg.SMDD_ZIP, smdd_target, check_indicator="train.csv")
+        if os.path.isfile(cfg.FRLL_ZIP) and zipfile.is_zipfile(cfg.FRLL_ZIP):
+            frll_target = os.path.join(scratch_base, "frll_extracted")
+            cfg.FRLL_ZIP = extract_archive_if_needed(cfg.FRLL_ZIP, frll_target, check_indicator="morph_amsl")
+
+    # If dataset is still a raw zip, disable multiprocessing workers to prevent zip descriptor deadlocks
+    if os.path.isfile(cfg.SMDD_ZIP) and zipfile.is_zipfile(cfg.SMDD_ZIP):
+        cfg.NUM_WORKERS = 0
+        cfg.PIN_MEMORY = False
+        print("  [Notice] Running directly from zip archive. Set NUM_WORKERS=0 to avoid IPC deadlocks.", flush=True)
+    else:
+        print(f"  [Notice] Dataset on filesystem. Using NUM_WORKERS={cfg.NUM_WORKERS}, PIN_MEMORY={cfg.PIN_MEMORY}.", flush=True)
 
 
 def main():
