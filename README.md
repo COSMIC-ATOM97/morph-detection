@@ -19,49 +19,48 @@ A **face morph attack** occurs when two individuals (such as an accomplice with 
        Subject B (Criminal)   ──┘
 ```
 
-This project establishes a rigorous **Single-Stream Spatial Baseline** evaluated strictly under **ISO/IEC 30107-3** presentation attack detection standards.
+This project establishes the **Dual-Stream UID-MAD** (Unified Interpretable Morph Attack Detection) pipeline, combining self-supervised Vision Transformers with high-pass frequency residual ConvNets and Z-score calibrated decision fusion, evaluated strictly under **ISO/IEC 30107-3** presentation attack detection standards.
 
 ### Key Highlights
-- **Self-Supervised Spatial Foundation (Stream A):** Leverages DINOv2 ViT-S/14 with a multi-scale patch token aggregator (`CLS + Mean + Std + Max` to 1536-d) sensitive to subtle localized blending seams.
+- **Self-Supervised Spatial Foundation (Stream A):** Leverages DINOv2 ViT-S/14 with LoRA adapters ($r=16, \alpha=32.0$) and a multi-scale patch token aggregator (`CLS + Mean + Std + Max` to 1536-d) sensitive to localized blending seams.
 - **High-Pass Frequency Residual Stream (Stream B):** Integrates a 4-stage convolutional encoder on fixed Laplacian residuals to capture generative GAN checkerboard artifacts and spectral anomalies.
-- **Angular Margin Metric Learning:** Implements Additive Angular Margin Loss (ArcFace: scale s = 32.0, margin m = 0.25) across decoupled multi-task heads to prevent modality competition.
+- **Angular Margin Metric Learning:** Implements Additive Angular Margin Loss (ArcFace: scale $s = 32.0$, margin $m = 0.25$) across decoupled multi-task heads to prevent modality competition.
 - **The StyleGAN2 Breakthrough:** Generative latent morph detection surged from **0.4988 ROC-AUC (51.0% EER)** in Phase 1 to **0.9399 ROC-AUC (14.66% EER)** clean, and **0.9854 ROC-AUC (3.92% EER)** under print-scan.
 - **Print-Scan Orthogonal Complementarity:** While spatial ViT degrades under print-scan halftoning (dropping to 0.3155 on StyleGAN2), the frequency residual stream surges to **>0.997 ROC-AUC across all 5 generators**.
 - **Z-Score Calibrated Decision Fusion:** Standardizing margin predictions against bona fide baselines achieves **$\ge 0.9809$ ROC-AUC across all 15 operational slices** (average **0.992**).
-
 
 ---
 
 ## System Architecture & Methodology
 
-The Phase 1 baseline pipeline processes single RGB facial images through a frozen/differentially fine-tuned self-supervised Vision Transformer, pools multi-scale patch statistics, and maps representations onto an angular margin hypersphere.
+The Dual-Stream UID-MAD architecture processes single RGB facial images simultaneously across two orthogonal domains: spatial patch geometry (Stream A) and high-frequency residual spectra (Stream B).
 
 ```
                       INPUT IMAGE: I in R^(224 x 224 x 3)
                                     │
+              ┌─────────────────────┴─────────────────────┐
+              ▼                                           ▼
+     STREAM A (SPATIAL)                          STREAM B (FREQUENCY RESIDUAL)
+   DINOv2 ViT-S/14 (LoRA r=16)                 Fixed 3x3 Laplacian Filter
+   Outputs: CLS + 256 Patches                  Residual R = |Conv2d(I, K_lap)|
+   Multi-Scale Token Pooling:                  4-Stage ConvNet (3->32->64->128)
+   [CLS || Mean || Std || Max]                 Dual Pooling: [AvgPool || MaxPool]
+   Linear(1536 -> 512 -> 256-d)                Linear(256 -> 128-d)
+        e_spatial in R^256                          e_freq in R^128
+              │                                           │
+              └─────────────────────┬─────────────────────┘
                                     ▼
-                      DINOv2 ViT-S/14 BACKBONE (14x14 Patches)
-              Outputs: CLS Token z_cls in R^384, Patch Tokens z_1...z_256 in R^384
+                         DECOUPLED MULTI-TASK HEADS
+                 Spatial Head: ArcFace(256 -> 2, s=32.0, m=0.25)
+                 Frequency Head: ArcFace(128 -> 2, s=32.0, m=0.25)
+                 Joint Fused Head: ArcFace(256 -> 2, s=32.0, m=0.25)
                                     │
                                     ▼
-                      MULTI-SCALE PATCH TOKEN AGGREGATOR
-          f = [ z_cls || Mean(z_patches) || Std(z_patches) || Max(z_patches) ]
-                               f in R^1536
-                                    │
-                                    ▼
-                        PROJECTION BOTTLENECK (MLP)
-                      Linear(1536 -> 512) -> BatchNorm -> GELU
-                      Linear(512 -> 256)  -> BatchNorm
-                               e in R^256
-                                    │
-                                    ▼
-                          ARCFACE HEAD (s=30.0, m=0.35)
-                 L2 Normalization of Feature e and Weight Matrix W
-                    Angular Margin Penalty on Ground-Truth Class
-                                    │
-                                    ▼
-                        CROSS-ENTROPY LOSS / INFERENCE
+                   Z-SCORE CALIBRATED DECISION FUSION
+              Z_final = 0.5 * Z_spatial + 0.5 * Z_frequency
+              Standardized against genuine baseline statistics
 ```
+
 
 ### 1. Spatial Feature Extraction (DINOv2 ViT-S/14)
 - **Backbone:** `vit_small_patch14_dinov2.lvd142m` (21.6M parameters, 384 embedding dimension).
@@ -221,14 +220,17 @@ When presenting these results to advisors and technical committees, the followin
 
 ---
 
-## Proposed Next Steps (Future Research Directions)
+## Milestone Documentation & Reports
 
-The empirical failure on StyleGAN2 directly defines the next scientific milestones:
-1. **Frequency-Domain Residual Modeling:** While StyleGAN2 leaves no spatial seams, its transposed convolutions and upsampling layers induce periodic spectral Nyquist peaks in the 2D frequency domain (DCT/FFT) and lack physical camera Photo-Response Non-Uniformity (PRNU) sensor noise.
-2. **Dual-Domain Architecture Design:** We propose coupling Stream A (Spatial ViT) with a dedicated high-pass residual frequency branch (such as a Laplacian residual filter and lightweight ConvNet) to provide comprehensive coverage across both landmark-warped and generative latent morphs.
-3. **Calibrated Decision Fusion:** Designing continuous margin-based scoring to prevent modality dominance across distinct attack distributions.
+Detailed technical documentation and empirical logs for each sprint:
+- **Week 1 Baseline Report:** [`docs/week1_report.md`](docs/week1_report.md) (Spatial DINOv2 baseline & StyleGAN2 failure analysis)
+- **Week 2 Research Report:** [`docs/week2_report.md`](docs/week2_report.md) (Dual-stream architecture & camera sensor noise autopsy)
+- **Week 3 Milestone Report:** [`docs/week3_report.md`](docs/week3_report.md) (Z-score calibrated fusion & StyleGAN2 breakthrough)
+- **Oral Defense Guide:** [`docs/phase1_comprehensive_briefing.md`](docs/phase1_comprehensive_briefing.md) (Exhaustive faculty Q&A matrix)
+- **Team Master Record:** [`team_internal/master_progress_and_future_plan.md`](team_internal/master_progress_and_future_plan.md) (Technical walkthrough & future blueprints)
 
 ---
+
 
 ## Repository Structure
 

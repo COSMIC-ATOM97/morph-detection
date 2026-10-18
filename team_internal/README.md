@@ -4,11 +4,13 @@
 
 ---
 
-## 📂 Internal Team Directory
+## Internal Team Directory
 
-- **[`week1_team_handoff.md`](week1_team_handoff.md):** Plain-English summary of Week 1 discoveries, how to run evaluations on Kaggle in 2 minutes, and task assignments for upcoming weeks.
-- **[`sprint_roadmap.md`](sprint_roadmap.md):** Living project plan, experiment tracking, and 4-week milestone schedule.
-- **[`environment_setup.md`](environment_setup.md):** Environment setup notes, Kaggle paths, and scratchpad.
+- **[`team_debrief_and_walkthrough.md`](team_debrief_and_walkthrough.md):** Complete technical debrief and plain-English walkthrough for teammates, explaining every architecture decision, Kaggle bug fix, and Q&A defense scripts.
+- **[`master_progress_and_future_plan.md`](master_progress_and_future_plan.md):** Living master progress record, presentation slides outline, and future Phase 3/4 execution blueprints.
+- **[`week1_team_handoff.md`](week1_team_handoff.md):** Plain-English summary of Week 1 discoveries.
+- **[`environment_setup.md`](environment_setup.md):** Hardware & Kaggle setup guide.
+
 
 ---
 
