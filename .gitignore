@@ -2,5 +2,7 @@
 *.pt
 __pycache__/
 checkpoints/
+data/
 *_backup.md
+
 

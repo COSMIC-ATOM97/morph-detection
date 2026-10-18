@@ -237,6 +237,9 @@ morph-detection/
 ├── README.md                      # Academic presentation dossier & results summary
 ├── kaggle_train.py                # Unified self-contained training & evaluation script
 │
+├── checkpoints/                   # Trained model weights (phase2_dual_stream_best.pt)
+├── data/                          # Raw archive datasets (SMDD & FRLL zip files, git-ignored)
+│
 ├── scripts/                       # EXECUTABLE CODE & NOTEBOOKS
 │   ├── phase1_dino_spatial.py     # Phase 1 standalone script (Spatial ViT Baseline)
 │   ├── phase1_dino_spatial.ipynb  # Phase 1 interactive Jupyter Notebook
@@ -262,13 +265,18 @@ morph-detection/
 │   │   └── roc_morph_*.png        # Dual-stream ROC curves across all generators
 │   └── README.md                  # Results documentation
 │
-└── literature/                    # FOUNDATIONAL BACKGROUND LITERATURE
-    ├── literature_synthesis.md    # Synthesis of 4 foundational MAD papers
-    ├── paper1_composite_heatmaps.md # ViT composite attention maps
-    ├── paper2_deep_learning_survey.md # Deep learning MAD survey
-    ├── paper3_facenet_hasc_baseline.md # FaceNet + HASC baseline
-    ├── paper4_dmad_hybrid_analysis.md # Differential MAD hybrid analysis
-    └── README.md                  # Literature index
+├── literature/                    # FOUNDATIONAL BACKGROUND LITERATURE
+│   ├── literature_synthesis.md    # Synthesis of 4 foundational MAD papers
+│   ├── paper1_composite_heatmaps.md # ViT composite attention maps
+│   ├── paper2_deep_learning_survey.md # Deep learning MAD survey
+│   ├── paper3_facenet_hasc_baseline.md # FaceNet + HASC baseline
+│   ├── paper4_dmad_hybrid_analysis.md # Differential MAD hybrid analysis
+│   └── README.md                  # Literature index
+│
+└── team_internal/                 # DEVELOPER WORKSPACE & HANDOFF NOTES
+    ├── master_progress_and_future_plan.md # Complete roadmap, presentation guide & Phase 3 blueprint
+    └── environment_setup.md       # Hardware & Kaggle setup guide
+
 
 ```
 
