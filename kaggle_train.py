@@ -142,8 +142,8 @@ class Config:
     # Training
     IMG_SIZE = 224
     BATCH_SIZE = 64
-    NUM_WORKERS = 2  # 2 workers for extracted dataset (optimal for 2-vCPU Kaggle instance)
-    PIN_MEMORY = True  # Faster CUDA page-locked memory transfer
+    NUM_WORKERS = 0  # 0 workers completely avoids PyTorch multiprocessing/CUDA fork deadlocks on Kaggle
+    PIN_MEMORY = False  # Avoids CUDA allocator memory deadlocks
     WARMUP_EPOCHS = 4  # 4 epochs head + frequency encoder training (~8-10 min)
     TOTAL_EPOCHS = 8   # 8 epochs total (4 warmup + 4 fine-tuning epochs, ~20-25 min)
     HEAD_LR = 1e-3
@@ -211,17 +211,25 @@ def extract_archive_if_needed(archive_path: str, target_dir: str, check_indicato
 
     # Try system unzip first (fastest C implementation on Linux)
     extracted_ok = False
-    try:
-        ret = subprocess.run(["unzip", "-q", "-n", archive_path, "-d", target_dir], capture_output=True, timeout=300)
-        if ret.returncode == 0 and os.path.exists(check_path):
-            extracted_ok = True
-    except Exception:
-        pass
+    unzip_bin = shutil.which("unzip")
+    if unzip_bin:
+        try:
+            ret = subprocess.run([unzip_bin, "-q", "-o", archive_path, "-d", target_dir], capture_output=True, timeout=300)
+            if ret.returncode == 0 and os.path.exists(check_path):
+                extracted_ok = True
+        except Exception as e:
+            print(f"  [Notice] CLI unzip encountered an issue ({e}), switching to Python unpacker...", flush=True)
 
     if not extracted_ok:
         try:
             with zipfile.ZipFile(archive_path, "r") as zf:
-                zf.extractall(target_dir)
+                members = zf.infolist()
+                total_files = len(members)
+                print(f"  [Python Unpack] Extracting {total_files} files...", flush=True)
+                for i, member in enumerate(members):
+                    zf.extract(member, target_dir)
+                    if (i + 1) % 5000 == 0 or (i + 1) == total_files:
+                        print(f"    -> Extracted {i+1}/{total_files} files ({100*(i+1)/total_files:.1f}%)...", flush=True)
             extracted_ok = True
         except Exception as e:
             print(f"  [Warning] Extraction failed ({e}); falling back to direct zip reading.", flush=True)
@@ -1267,9 +1275,17 @@ def evaluate_frll(cfg: Config, model: nn.Module = None):
 
     total_evals = len(generators) * len(conditions)
     eval_count = 0
+    eval_start_time = time.time()
+    max_eval_sec = cfg.MAX_RUNTIME_MINUTES * 60
 
     for gen_name, morph_paths in generators.items():
+        if time.time() - eval_start_time > max_eval_sec:
+            print(f"\n  [SAFETY STOP] Evaluation runtime budget reached ({cfg.MAX_RUNTIME_MINUTES}m). Finalizing outputs...", flush=True)
+            break
         for cond_name, transform in conditions:
+            if time.time() - eval_start_time > max_eval_sec:
+                print(f"\n  [SAFETY STOP] Evaluation runtime budget reached ({cfg.MAX_RUNTIME_MINUTES}m). Finalizing outputs...", flush=True)
+                break
             eval_count += 1
             t_cond_start = time.time()
             total_samples = len(bonafide_paths) + len(morph_paths)
