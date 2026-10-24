@@ -48,7 +48,7 @@ Face morphing presents an existential security threat to Automated Border Contro
 
 This report presents the mid-semester research, model engineering, and empirical validation progress on **UID-MAD (Unified Interpretable Dual-Stream Face Morph Attack Detection)**, evaluated strictly under the international biometric standards of ISO/IEC 30107-3. In the initial phase, a single-stream spatial baseline utilizing a self-supervised Vision Transformer (DINOv2 ViT-S/14) with multi-scale patch token pooling and Additive Angular Margin loss (ArcFace) was established. While achieving near-perfect detection on landmark-based morphs (0.9993 ROC-AUC on OpenCV, 0.9958 on FaceMorpher), the spatial model completely collapsed to random chance on generative latent morphs (StyleGAN2: 0.4988 ROC-AUC, 51.0% EER) due to the absence of spatial blending seams.
 
-To resolve this limitation, a unified dual-stream architecture was engineered, incorporating a high-pass Laplacian residual filter with a lightweight 4-stage convolutional network (Stream B) alongside a parameter-efficient Low-Rank Adapted (LoRA, rank 16) DINOv2 ViT-S/14 transformer (Stream A). Decoupled multi-task ArcFace supervision was deployed to prevent gradient interference between streams ($\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{fuse}} + 0.5\mathcal{L}_{\text{spatial}} + 0.5\mathcal{L}_{\text{freq}}$). Training was deployed on Kaggle Dual NVIDIA T4 accelerators on 32,000 synthetic images (SMDD), achieving 99.30% in-domain training accuracy and 0.01% validation EER in 58.4 minutes.
+To resolve this limitation, a unified dual-stream architecture was engineered, incorporating a high-pass Laplacian residual filter with a lightweight 4-stage convolutional network (Stream B) alongside a parameter-efficient Low-Rank Adapted (LoRA, rank 16) DINOv2 ViT-S/14 transformer (Stream A). Decoupled multi-task ArcFace supervision was deployed to prevent gradient interference between streams ($\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{fuse}} + 0.5\mathcal{L}_{\text{spatial}} + 0.5\mathcal{L}_{\text{freq}}$). Training was deployed on Kaggle Dual NVIDIA T4 accelerators on 32,000 synthetic images (SMDD), achieving 99.12% in-domain training accuracy and zero validation error in 58.4 minutes.
 
 Zero-shot out-of-distribution evaluation across all 15 operational slices of FRLL-Morphs demonstrated that the dual-stream LoRA model solved the generative blind spot, surging StyleGAN2 detection to **0.9399 ROC-AUC (14.66% EER)** on clean images and **0.9854 ROC-AUC (3.92% EER)** on print-scan images. Furthermore, an orthogonal domain complementarity was discovered: under physical print-scan degradation, high-pass frequency residuals surge to **>0.997 ROC-AUC** across all generator families. Standardized Z-score decision calibration achieved $\ge 0.9809$ ROC-AUC across all 15 operational splits with an overall mean of **0.992 ROC-AUC**. With all model architecture, training, and fine-tuning completed, remaining future work focuses on edge optimization (ONNX / TensorRT), real-time e-Gate application development, and visual saliency inspection interfaces for border officials.
 
@@ -77,10 +77,11 @@ Zero-shot out-of-distribution evaluation across all 15 operational slices of FRL
    - 3.5 Training & Optimization Pipeline on Dual NVIDIA T4 Hardware
 4. **Chapter 4: Progress Achieved (Completed Training & Benchmark Validation)**
    - 4.1 Phase 1 Baseline Validation & The StyleGAN2 Blind Spot (0.4988 ROC-AUC)
-   - 4.2 In-Domain Training Convergence on SMDD (99.30% Accuracy)
+   - 4.2 In-Domain Training Convergence on SMDD (8-Epoch Training Record)
    - 4.3 Phase 2 Breakthrough: Solving the Generative Blind Spot (+44.1% AUC Leap)
    - 4.4 Discovery of Orthogonal Frequency Surge under Print-Scan (>0.997 AUC)
    - 4.5 Complete 15-Slice FRLL-Morphs Benchmark Record & Calibrated Decision Fusion
+   - 4.6 Empirical Visual Evidence: Official Multi-Generator ROC Curves
 5. **Chapter 5: Future Work and Timeline**
    - 5.1 Automated Border Control (ABC) e-Gate Application Development
    - 5.2 Embedded Edge Optimization: ONNX Runtime & TensorRT Compilation
@@ -250,7 +251,7 @@ $$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{ArcFace}}(\mathbf{e}_{\text{fu
 - **Hardware & Engineering Optimizations:**
   - Deployed on Kaggle Dual NVIDIA T4 GPUs with PyTorch `nn.DataParallel` and FP16 mixed precision.
   - Scratch extraction: unpacks the 4.5 GB dataset archive directly to `/tmp` local NVMe disk, completely resolving FUSE random-seek latency bottlenecks.
-  - End-to-end training over 6 epochs completed in **58.4 minutes**; full 15-slice evaluation completed in **9.5 minutes**.
+  - End-to-end training over 8 epochs completed in **58.4 minutes**; full 15-slice evaluation completed in **9.5 minutes**.
 
 ---
 
@@ -265,40 +266,54 @@ The spatial baseline demonstrated near-perfect accuracy on landmark-based morphi
 - **morph_webmorph (Clean):** **0.9886 ROC-AUC, 4.91% EER**
 - **morph_opencv (JPEG $q=30$):** **0.9992 ROC-AUC, 1.25% EER**
 
-However, on generative latent morphs (StyleGAN2), the spatial baseline failed completely:
+However, on generative latent morphs (StyleGAN2), the spatial baseline failed completely, as depicted in Figure 4.1:
 - **morph_stylegan (Clean):** **0.4988 ROC-AUC, 51.00% EER**
 - **morph_stylegan (JPEG $q=30$):** **0.4947 ROC-AUC, 50.80% EER**
 
+<div align="center">
+  <img src="file:///home/crimsond/project/results/phase1/roc_morph_stylegan.png" width="450" alt="Figure 4.1: Phase 1 StyleGAN2 Collapse">
+  <br>
+  <strong>Figure 4.1:</strong> Phase 1 Spatial ViT-S/14 Baseline ROC Curve on StyleGAN2 Morphs (ROC-AUC = 0.4988). The empirical curve hovers directly along the 0.50 random-guess diagonal line.
+</div>
+
+<br>
+
 An ROC-AUC of 0.4988 is mathematically equivalent to a random coin flip. Because StyleGAN2 synthesizes faces continuously from latent space, there are no physical blending seams for the spatial transformer to capture.
 
-### 4.2 In-Domain Training Convergence on SMDD (99.30% Accuracy)
-With the introduction of Stream B (Laplacian ConvNet) and rank-16 LoRA adapters, the complete dual-stream network was trained on SMDD over 6 epochs (4 warmup epochs with frozen backbone, 2 fine-tuning epochs updating LoRA parameters):
+### 4.2 In-Domain Training Convergence on SMDD (8-Epoch Training Record)
+With the introduction of Stream B (Laplacian ConvNet) and rank-16 LoRA adapters, the complete dual-stream network was trained on SMDD over 8 epochs (Stage 1: 4 warmup epochs with frozen backbone; Stage 2: 4 fine-tuning epochs updating LoRA parameters). Table 4.1 details the official training convergence history recorded in `results/phase2/training_history.csv`:
+
+<div align="center">
+
+**Table 4.1:** Dual-Stream UID-MAD 8-Epoch Training Convergence History on SMDD (Dual NVIDIA T4 GPUs)
 
 | Epoch | Optimization Stage | Train Loss | Train Acc | Val Loss | Val EER | Val ROC-AUC |
 | :---: | :--- | :---: | :---: | :---: | :---: | :---: |
-| **1** | Stage 1 (Warmup) | 1.9040 | 95.00% | 0.0191 | 0.0266% | 0.99990 |
-| **2** | Stage 1 (Warmup) | 0.7571 | 97.88% | 0.0175 | 0.0101% | 0.99990 |
-| **3** | Stage 1 (Warmup) | 0.4542 | 98.57% | 0.0210 | 0.0201% | 0.99980 |
-| **4** | Stage 1 (Warmup) | 0.3585 | 98.77% | 0.0294 | 0.0402% | 0.99960 |
-| **5** | Stage 2 (LoRA Fine-Tune) | 0.2722 | 99.08% | 0.0082 | 0.0101% | 0.99990 |
-| **6** | Stage 2 (LoRA Fine-Tune) | **0.2326** | **99.30%** | **0.0064** | **0.0001 (0.01%)** | **0.99990** |
+| **1** | Stage 1 (Warmup) | 2.7199 | 92.58% | 0.00328 | 0.0201% | 0.999999 |
+| **2** | Stage 1 (Warmup) | 1.4864 | 95.96% | 0.00007 | 0.0000% | 1.000000 |
+| **3** | Stage 1 (Warmup) | 1.1097 | 96.63% | 0.00447 | 0.0201% | 0.999999 |
+| **4** | Stage 1 (Warmup) | 0.8437 | 96.71% | 0.00000 | 0.0000% | 1.000000 |
+| **5** | Stage 2 (LoRA Fine-Tune) | 0.6428 | 97.74% | 0.00000 | 0.0000% | 1.000000 |
+| **6** | Stage 2 (LoRA Fine-Tune) | 0.5726 | 98.39% | 0.00000 | 0.0000% | 1.000000 |
+| **7** | Stage 2 (LoRA Fine-Tune) | 0.5241 | 98.83% | 0.00000 | 0.0000% | 1.000000 |
+| **8** | Stage 2 (LoRA Fine-Tune) | **0.5039** | **99.12%** | **0.00000** | **0.0000%** | **1.000000** |
 
-The network converged with 99.30% training accuracy and 0.01% validation EER on in-domain synthetic data.
+</div>
+
+The network converged with 99.12% training accuracy and zero validation error on in-domain synthetic data.
 
 ### 4.3 Phase 2 Breakthrough: Solving the Generative Blind Spot (+44.1% AUC Leap)
-When evaluated out-of-distribution on FRLL-Morphs, the dual-stream LoRA model successfully resolved the generative blind spot:
+When evaluated out-of-distribution on FRLL-Morphs, the dual-stream LoRA model successfully resolved the generative blind spot. Figure 4.2 illustrates the multi-stream ROC curves on StyleGAN2, demonstrating that the calibrated decision fusion (purple curve) leaps to **0.9399 ROC-AUC (14.66% EER)** on clean images and **0.9854 ROC-AUC (3.92% EER)** under print-scan.
 
-| Morph Generator | Attack Type | Evaluation Condition | Phase 1 (Spatial Baseline) | Phase 2 (Dual-Stream + LoRA) | Breakthrough / Impact |
-| :--- | :--- | :--- | :---: | :---: | :--- |
-| **morph_opencv** | Delaunay Landmark Warp | Clean | 0.9993 AUC | **0.9997 AUC (0.74% EER)** | Preserved near-perfect landmark detection |
-| **morph_opencv** | Delaunay Landmark Warp | Print-Scan | 0.9786 AUC | **0.9973 AUC (2.33% EER)** | Robust under physical degradation |
-| **morph_facemorpher** | Alpha Blending | Clean | 0.9958 AUC | **0.9999 AUC (0.41% EER)** | Zero-shot OOD generalization |
-| **morph_webmorph** | Landmark Warp | Clean | 0.9886 AUC | **0.9968 AUC (1.96% EER)** | High operational reliability |
-| **morph_stylegan** | Generative Latent W+ | Clean | 0.4988 AUC (Failure) | **0.9399 AUC (14.66% EER)** | **+44.1% AUC Leap (Blind spot solved)** |
-| **morph_stylegan** | Generative Latent W+ | Print-Scan | 0.5780 AUC | **0.9854 AUC (3.92% EER)** | **Frequency stream surges to 0.9977 AUC** |
-| **morph_amsl** | Post-Processed Landmark | Clean | 0.9461 AUC | **0.9938 AUC (2.92% EER)** | Seam feathering overcome |
+<div align="center">
+  <img src="file:///home/crimsond/project/results/phase2/roc_morph_stylegan.png" width="480" alt="Figure 4.2: Phase 2 StyleGAN2 Breakthrough">
+  <br>
+  <strong>Figure 4.2:</strong> Phase 2 Multi-Stream ROC Curves on StyleGAN2 Morphs (Clean). The calibrated decision fusion curve (purple) surges to 0.940 ROC-AUC, completely overcoming the 0.4988 Phase 1 failure mode.
+</div>
 
-Introducing frequency residual modeling and LoRA fine-tuning surged StyleGAN2 detection from a coin toss to **0.9399 ROC-AUC**, confirming that high-pass Laplacian filtering isolates transposed-convolution Nyquist artifacts.
+<br>
+
+Simultaneously, LoRA fine-tuning preserved spatial sensitivity, achieving near-perfect landmark detection across OpenCV (Figure 4.3), FaceMorpher (Figure 4.4), WebMorph (Figure 4.5), and AMSL (Figure 4.6).
 
 ### 4.4 Discovery of Orthogonal Frequency Surge under Print-Scan (>0.997 AUC)
 A key empirical discovery emerged during cross-condition evaluation: physical print-scan degradation introduces halftone screening, mechanical ink dispersion, and scanner discretization noise. These physical transformations degrade spatial patch representations (OpenCV spatial AUC dropped to 0.9143; StyleGAN spatial dropped to 0.3155). 
@@ -313,31 +328,66 @@ However, because these physical artifacts introduce strong periodic high-frequen
 This proves that spatial and frequency streams are truly orthogonal and complementary across digital and physical domains.
 
 ### 4.5 Complete 15-Slice FRLL-Morphs Benchmark Record & Calibrated Decision Fusion
-To prevent cross-dataset camera sensor noise (PRNU) from corrupting decision boundaries, scores were standardized against bona fide reference distributions:
+To prevent cross-dataset camera sensor noise (PRNU) from corrupting decision boundaries, raw cosine margins ($S = \cos \theta_1 - \cos \theta_0$) were standardized against bona fide reference distributions:
 $$Z_{\text{calibrated}} = 0.5 \cdot Z_{\text{spatial}} + 0.5 \cdot Z_{\text{freq}}$$
 
-Below is the complete official benchmark record across all 15 operational slices (`results/phase2/frll_results_comparison.csv`):
+Table 4.2 presents the complete official benchmark record recorded in `results/phase2/frll_results_comparison.csv` across all 15 operational slices under ISO/IEC 30107-3 standards:
 
-```csv
-generator,condition,fused_AUC,fused_EER,calibrated_AUC,calibrated_EER,calibrated_BPCER@1%,spatial_AUC,freq_AUC
-morph_opencv,clean,0.2937,0.7002,0.9997,0.0074,0.0000,0.9991,0.8564
-morph_opencv,jpeg_q30,0.2982,0.6896,0.9996,0.0025,0.0000,0.9990,0.8576
-morph_opencv,printscan,0.6477,0.3767,0.9973,0.0233,0.0245,0.9143,0.9992
-morph_facemorpher,clean,0.2822,0.7056,0.9999,0.0041,0.0000,0.9994,0.9506
-morph_facemorpher,jpeg_q30,0.2838,0.7126,0.9999,0.0049,0.0000,0.9993,0.9507
-morph_facemorpher,printscan,0.6580,0.3618,0.9994,0.0102,0.0147,0.9342,0.9996
-morph_webmorph,clean,0.0324,0.9154,0.9968,0.0196,0.1471,0.9963,0.7395
-morph_webmorph,jpeg_q30,0.0358,0.9056,0.9967,0.0221,0.1373,0.9961,0.7426
-morph_webmorph,printscan,0.2070,0.7596,0.9893,0.0339,0.0784,0.6355,0.9976
-morph_stylegan,clean,0.1305,0.7848,0.9399,0.1466,0.5588,0.9116,0.7644
-morph_stylegan,jpeg_q30,0.1348,0.7791,0.9384,0.1433,0.5637,0.9083,0.7640
-morph_stylegan,printscan,0.3952,0.5651,0.9854,0.0392,0.1765,0.3155,0.9977
-morph_amsl,clean,0.3748,0.5840,0.9938,0.0292,0.1618,0.9982,0.6605
-morph_amsl,jpeg_q30,0.3899,0.5634,0.9935,0.0323,0.1618,0.9979,0.6634
-morph_amsl,printscan,0.2259,0.6982,0.9809,0.0673,0.1422,0.3743,0.9981
-```
+<div align="center">
+
+**Table 4.2:** Complete 15-Slice FRLL-Morphs Out-of-Distribution Benchmark Comparison Record
+
+| Morph Generator | Evaluation Condition | Spatial ViT Stream (AUC / EER) | Frequency ConvNet (AUC / EER) | Fused Head Uncalibrated | Calibrated UID-MAD (ROC-AUC) | Calibrated EER (%) | Operational BPCER @ 1% APCER |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **morph_opencv** | Clean | 0.9991 / 0.53% | 0.8564 / 23.03% | 0.2937 | **0.9997** | **0.74%** | **0.00%** |
+| **morph_opencv** | JPEG ($q=30$) | 0.9990 / 0.74% | 0.8576 / 23.23% | 0.2982 | **0.9996** | **0.25%** | **0.00%** |
+| **morph_opencv** | Print-Scan | 0.9143 / 16.28% | **0.9992 / 1.47%** | 0.6477 | **0.9973** | **2.33%** | **2.45%** |
+| **morph_facemorpher** | Clean | 0.9994 / 0.86% | 0.9506 / 11.69% | 0.2823 | **0.9999** | **0.41%** | **0.00%** |
+| **morph_facemorpher** | JPEG ($q=30$) | 0.9993 / 0.70% | 0.9507 / 11.28% | 0.2838 | **0.9999** | **0.49%** | **0.00%** |
+| **morph_facemorpher** | Print-Scan | 0.9342 / 13.61% | **0.9996 / 1.06%** | 0.6580 | **0.9994** | **1.02%** | **1.47%** |
+| **morph_webmorph** | Clean | 0.9963 / 2.00% | 0.7395 / 31.68% | 0.0324 | **0.9968** | **1.96%** | **14.71%** |
+| **morph_webmorph** | JPEG ($q=30$) | 0.9961 / 2.25% | 0.7426 / 30.29% | 0.0358 | **0.9967** | **2.21%** | **13.73%** |
+| **morph_webmorph** | Print-Scan | 0.6355 / 41.50% | **0.9976 / 2.49%** | 0.2070 | **0.9893** | **3.39%** | **7.84%** |
+| **morph_stylegan** | Clean | 0.9116 / 17.03% | 0.7644 / 29.89% | 0.1305 | **0.9399** | **14.66%** | **55.88%** |
+| **morph_stylegan** | JPEG ($q=30$) | 0.9083 / 16.70% | 0.7640 / 29.93% | 0.1348 | **0.9384** | **14.33%** | **56.37%** |
+| **morph_stylegan** | Print-Scan | 0.3155 / 63.94% | **0.9977 / 1.92%** | 0.3952 | **0.9854** | **3.92%** | **17.65%** |
+| **morph_amsl** | Clean | 0.9982 / 2.01% | 0.6605 / 37.99% | 0.3748 | **0.9938** | **2.92%** | **16.18%** |
+| **morph_amsl** | JPEG ($q=30$) | 0.9979 / 2.15% | 0.6634 / 37.37% | 0.3899 | **0.9935** | **3.23%** | **16.18%** |
+| **morph_amsl** | Print-Scan | 0.3743 / 59.43% | **0.9981 / 1.52%** | 0.2259 | **0.9809** | **6.73%** | **14.22%** |
+
+</div>
+
+<br>
 
 Calibrated decision fusion achieves $\ge 0.9809$ ROC-AUC across all 15 operational splits, with an overall mean of **0.992 ROC-AUC**.
+
+### 4.6 Empirical Visual Evidence: Official Multi-Generator ROC Curves
+Figures 4.3 through 4.6 display the multi-stream ROC curves for landmark and post-processed morphing algorithms under clean evaluation:
+
+<div align="center">
+  <table style="width:100%; border:none;">
+    <tr>
+      <td align="center" style="width:50%; border:none;">
+        <img src="file:///home/crimsond/project/results/phase2/roc_morph_opencv.png" width="400" alt="Figure 4.3: OpenCV ROC">
+        <br><strong>Figure 4.3:</strong> Multi-Stream ROC for `morph_opencv` (Calibrated AUC = 1.000).
+      </td>
+      <td align="center" style="width:50%; border:none;">
+        <img src="file:///home/crimsond/project/results/phase2/roc_morph_facemorpher.png" width="400" alt="Figure 4.4: FaceMorpher ROC">
+        <br><strong>Figure 4.4:</strong> Multi-Stream ROC for `morph_facemorpher` (Calibrated AUC = 1.000).
+      </td>
+    </tr>
+    <tr>
+      <td align="center" style="width:50%; border:none;">
+        <img src="file:///home/crimsond/project/results/phase2/roc_morph_webmorph.png" width="400" alt="Figure 4.5: WebMorph ROC">
+        <br><strong>Figure 4.5:</strong> Multi-Stream ROC for `morph_webmorph` (Calibrated AUC = 0.997).
+      </td>
+      <td align="center" style="width:50%; border:none;">
+        <img src="file:///home/crimsond/project/results/phase2/roc_morph_amsl.png" width="400" alt="Figure 4.6: AMSL ROC">
+        <br><strong>Figure 4.6:</strong> Multi-Stream ROC for `morph_amsl` (Calibrated AUC = 0.994).
+      </td>
+    </tr>
+  </table>
+</div>
 
 ---
 
