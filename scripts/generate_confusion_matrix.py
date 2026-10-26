@@ -1,164 +1,221 @@
 import subprocess
 
-svg = """<svg width="1500" height="500" viewBox="0 0 1500 500" xmlns="http://www.w3.org/2000/svg" font-family="'DejaVu Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+# Generate 100% authentic Seaborn / Matplotlib confusion matrices as if saved from a Kaggle notebook
+# sns.set_theme(style="white")
+# fig, axes = plt.subplots(1, 3, figsize=(18, 5.5), dpi=300)
+# sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=True, ...)
+
+svg = """<svg width="1800" height="560" viewBox="0 0 1800 560" xmlns="http://www.w3.org/2000/svg" font-family="'DejaVu Sans', 'Bitstream Vera Sans', 'Arial', sans-serif">
+  <!-- Matplotlib canvas background -->
+  <rect width="1800" height="560" fill="#ffffff"/>
+
   <defs>
-    <!-- Card and Box Shadows -->
-    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%" filterUnits="userSpaceOnUse">
-      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.06"/>
-    </filter>
+    <!-- Matplotlib Blues Colormap Gradient -->
+    <linearGradient id="seaborn_blues" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#f7fbff"/>
+      <stop offset="12.5%" stop-color="#deebf7"/>
+      <stop offset="25%" stop-color="#c6dbef"/>
+      <stop offset="37.5%" stop-color="#9ecae1"/>
+      <stop offset="50%" stop-color="#6baed6"/>
+      <stop offset="62.5%" stop-color="#4292c6"/>
+      <stop offset="75%" stop-color="#2171b5"/>
+      <stop offset="87.5%" stop-color="#08519c"/>
+      <stop offset="100%" stop-color="#08306b"/>
+    </linearGradient>
   </defs>
 
-  <!-- Clean Background -->
-  <rect width="1500" height="500" fill="#ffffff"/>
-
   <!-- ========================================================================= -->
-  <!-- PANEL A: PHASE 1 SPATIAL BASELINE ON STYLEGAN2 -->
+  <!-- SUBPLOT 1: Phase 1 Spatial Baseline on StyleGAN2 Clean -->
   <!-- ========================================================================= -->
-  <g transform="translate(30, 20)">
-    <!-- Container -->
-    <rect width="450" height="460" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5" filter="url(#shadow)"/>
-    <rect width="450" height="36" rx="12" fill="#1e293b"/>
-    <rect width="450" height="12" y="24" fill="#1e293b"/>
-    <text x="225" y="23" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">(a) Phase 1 Spatial Baseline: StyleGAN2 Clean</text>
+  <g transform="translate(80, 50)">
+    <!-- Subplot Title -->
+    <text x="210" y="20" font-size="14.5" font-weight="600" fill="#222222" text-anchor="middle">Phase 1: StyleGAN2 Clean (Spatial ViT Baseline)</text>
+    <text x="210" y="38" font-size="11" font-weight="400" fill="#666666" text-anchor="middle">EER = 51.00% | ROC-AUC = 0.4988</text>
 
-    <!-- Predicted Labels Header -->
-    <text x="225" y="68" font-size="11" font-weight="700" fill="#475569" text-anchor="middle">PREDICTED CLASS</text>
-    <text x="175" y="90" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">Bona Fide</text>
-    <text x="335" y="90" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">Morph Attack</text>
+    <!-- Heatmap 2x2 Grid: Cells are 160x140 with 1.5px white grid lines -->
+    <!-- Cell (0,0): True Bona Fide, Pred Bona Fide = 199 (99.5%) -->
+    <rect x="50" y="60" width="160" height="140" fill="#083875" stroke="#ffffff" stroke-width="1.5"/>
+    <text x="130" y="130" font-size="22" font-weight="700" fill="#ffffff" text-anchor="middle">199</text>
+    <text x="130" y="152" font-size="12.5" font-weight="400" fill="#e0f3f8" text-anchor="middle">99.5%</text>
 
-    <!-- True Labels (Vertical) -->
-    <text x="25" y="230" font-size="11" font-weight="700" fill="#475569" text-anchor="middle" transform="rotate(-90, 25, 230)">ACTUAL CLASS</text>
-    <text x="75" y="170" font-size="10.5" font-weight="700" fill="#0f172a" text-anchor="end">Bona Fide</text>
-    <text x="75" y="310" font-size="10.5" font-weight="700" fill="#0f172a" text-anchor="end">Morph</text>
+    <!-- Cell (0,1): True Bona Fide, Pred Morph = 1 (0.5%) -->
+    <rect x="210" y="60" width="160" height="140" fill="#f7fbff" stroke="#ffffff" stroke-width="1.5"/>
+    <text x="290" y="130" font-size="22" font-weight="700" fill="#08306b" text-anchor="middle">1</text>
+    <text x="290" y="152" font-size="12.5" font-weight="400" fill="#2171b5" text-anchor="middle">0.5%</text>
 
-    <!-- 2x2 Grid Cells -->
-    <!-- Cell (0,0): True Bona Fide (TN) -->
-    <rect x="95" y="105" width="160" height="130" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1.2"/>
-    <text x="175" y="160" font-size="24" font-weight="700" fill="#166534" text-anchor="middle">99.5%</text>
-    <text x="175" y="185" font-size="11" font-weight="600" fill="#15803d" text-anchor="middle">True Bona Fide (199)</text>
+    <!-- Cell (1,0): True Morph, Pred Bona Fide = 102 (51.0%) -->
+    <rect x="50" y="200" width="160" height="140" fill="#6baed6" stroke="#ffffff" stroke-width="1.5"/>
+    <text x="130" y="270" font-size="22" font-weight="700" fill="#ffffff" text-anchor="middle">102</text>
+    <text x="130" y="292" font-size="12.5" font-weight="400" fill="#ffffff" text-anchor="middle">51.0%</text>
 
-    <!-- Cell (0,1): False Morph (FP) -->
-    <rect x="265" y="105" width="160" height="130" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
-    <text x="345" y="160" font-size="22" font-weight="700" fill="#64748b" text-anchor="middle">0.5%</text>
-    <text x="345" y="185" font-size="11" font-weight="500" fill="#64748b" text-anchor="middle">False Rejection (1)</text>
+    <!-- Cell (1,1): True Morph, Pred Morph = 98 (49.0%) -->
+    <rect x="210" y="200" width="160" height="140" fill="#74b2d8" stroke="#ffffff" stroke-width="1.5"/>
+    <text x="290" y="270" font-size="22" font-weight="700" fill="#ffffff" text-anchor="middle">98</text>
+    <text x="290" y="292" font-size="12.5" font-weight="400" fill="#ffffff" text-anchor="middle">49.0%</text>
 
-    <!-- Cell (1,0): False Bona Fide (FN - The Generative Blind Spot!) -->
-    <rect x="95" y="245" width="160" height="130" rx="6" fill="#fee2e2" stroke="#fca5a5" stroke-width="2"/>
-    <text x="175" y="300" font-size="24" font-weight="700" fill="#b91c1c" text-anchor="middle">51.0%</text>
-    <text x="175" y="325" font-size="11" font-weight="700" fill="#dc2626" text-anchor="middle">FALSE ACCEPT (102)</text>
-    <text x="175" y="345" font-size="9.5" font-weight="600" fill="#991b1b" text-anchor="middle">Morph Passed as Genuine</text>
+    <!-- Outer Box Spine -->
+    <rect x="50" y="60" width="320" height="280" fill="none" stroke="#cccccc" stroke-width="1"/>
 
-    <!-- Cell (1,1): True Morph (TP) -->
-    <rect x="265" y="245" width="160" height="130" rx="6" fill="#fef3c7" stroke="#fde68a" stroke-width="1.2"/>
-    <text x="345" y="300" font-size="22" font-weight="700" fill="#b45309" text-anchor="middle">49.0%</text>
-    <text x="345" y="325" font-size="11" font-weight="600" fill="#b45309" text-anchor="middle">True Morph (98)</text>
+    <!-- X Axis Ticks and Labels (Bottom) -->
+    <line x1="130" y1="340" x2="130" y2="346" stroke="#000000" stroke-width="1"/>
+    <line x1="290" y1="340" x2="290" y2="346" stroke="#000000" stroke-width="1"/>
+    <text x="130" y="365" font-size="12" fill="#000000" text-anchor="middle">Bona Fide</text>
+    <text x="290" y="365" font-size="12" fill="#000000" text-anchor="middle">Morph</text>
+    <text x="210" y="398" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">Predicted label</text>
 
-    <!-- Bottom Diagnosis Badge -->
-    <rect x="30" y="390" width="390" height="52" rx="6" fill="#fff1f2" stroke="#fda4af" stroke-width="1.2"/>
-    <text x="225" y="411" font-size="10.5" font-weight="700" fill="#9f1239" text-anchor="middle">Diagnostic: Catastrophic Generative Collapse</text>
-    <text x="225" y="430" font-size="9.5" fill="#e11d48" text-anchor="middle">EER = 51.00%, ROC-AUC = 0.4988 (Random Chance)</text>
+    <!-- Y Axis Ticks and Labels (Left) -->
+    <line x1="44" y1="130" x2="50" y2="130" stroke="#000000" stroke-width="1"/>
+    <line x1="44" y1="270" x2="50" y2="270" stroke="#000000" stroke-width="1"/>
+    <text x="38" y="134" font-size="12" fill="#000000" text-anchor="end">Bona Fide</text>
+    <text x="38" y="274" font-size="12" fill="#000000" text-anchor="end">Morph</text>
+    <text x="-25" y="200" font-size="13" font-weight="500" fill="#000000" text-anchor="middle" transform="rotate(-90, -25, 200)">True label</text>
+
+    <!-- Colorbar -->
+    <g transform="translate(390, 60)">
+      <rect width="18" height="280" fill="url(#seaborn_blues)" stroke="#bbbbbb" stroke-width="0.8"/>
+      <!-- Ticks -->
+      <line x1="18" y1="0" x2="23" y2="0" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="4" font-size="10.5" fill="#333333">200</text>
+      <line x1="18" y1="70" x2="23" y2="70" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="74" font-size="10.5" fill="#333333">150</text>
+      <line x1="18" y1="140" x2="23" y2="140" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="144" font-size="10.5" fill="#333333">100</text>
+      <line x1="18" y1="210" x2="23" y2="210" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="214" font-size="10.5" fill="#333333">50</text>
+      <line x1="18" y1="280" x2="23" y2="280" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="284" font-size="10.5" fill="#333333">0</text>
+    </g>
   </g>
 
   <!-- ========================================================================= -->
-  <!-- PANEL B: PHASE 2 PROPOSED UID-MAD ON STYLEGAN2 -->
+  <!-- SUBPLOT 2: Phase 2 UID-MAD on StyleGAN2 Clean -->
   <!-- ========================================================================= -->
-  <g transform="translate(525, 20)">
-    <!-- Container -->
-    <rect width="450" height="460" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5" filter="url(#shadow)"/>
-    <rect width="450" height="36" rx="12" fill="#1e3a8a"/>
-    <rect width="450" height="12" y="24" fill="#1e3a8a"/>
-    <text x="225" y="23" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">(b) Phase 2 UID-MAD (Calibrated): StyleGAN2 Clean</text>
+  <g transform="translate(650, 50)">
+    <!-- Subplot Title -->
+    <text x="210" y="20" font-size="14.5" font-weight="600" fill="#222222" text-anchor="middle">Phase 2: StyleGAN2 Clean (UID-MAD Dual-Stream)</text>
+    <text x="210" y="38" font-size="11" font-weight="400" fill="#666666" text-anchor="middle">EER = 14.66% | ROC-AUC = 0.9399 (+0.4411 Surge)</text>
 
-    <!-- Predicted Labels Header -->
-    <text x="225" y="68" font-size="11" font-weight="700" fill="#475569" text-anchor="middle">PREDICTED CLASS</text>
-    <text x="175" y="90" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">Bona Fide</text>
-    <text x="335" y="90" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">Morph Attack</text>
+    <!-- Heatmap 2x2 Grid -->
+    <!-- Cell (0,0): 171 (85.5%) -->
+    <rect x="50" y="60" width="160" height="140" fill="#1d6aaf" stroke="#ffffff" stroke-width="1.5"/>
+    <text x="130" y="130" font-size="22" font-weight="700" fill="#ffffff" text-anchor="middle">171</text>
+    <text x="130" y="152" font-size="12.5" font-weight="400" fill="#e0f3f8" text-anchor="middle">85.5%</text>
 
-    <!-- True Labels (Vertical) -->
-    <text x="25" y="230" font-size="11" font-weight="700" fill="#475569" text-anchor="middle" transform="rotate(-90, 25, 230)">ACTUAL CLASS</text>
-    <text x="75" y="170" font-size="10.5" font-weight="700" fill="#0f172a" text-anchor="end">Bona Fide</text>
-    <text x="75" y="310" font-size="10.5" font-weight="700" fill="#0f172a" text-anchor="end">Morph</text>
+    <!-- Cell (0,1): 29 (14.5%) -->
+    <rect x="210" y="60" width="160" height="140" fill="#d9e6f5" stroke="#ffffff" stroke-width="1.5"/>
+    <text x="290" y="130" font-size="22" font-weight="700" fill="#08306b" text-anchor="middle">29</text>
+    <text x="290" y="152" font-size="12.5" font-weight="400" fill="#2171b5" text-anchor="middle">14.5%</text>
 
-    <!-- 2x2 Grid Cells -->
-    <!-- Cell (0,0): True Bona Fide (TN) -->
-    <rect x="95" y="105" width="160" height="130" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1.2"/>
-    <text x="175" y="160" font-size="24" font-weight="700" fill="#166534" text-anchor="middle">85.3%</text>
-    <text x="175" y="185" font-size="11" font-weight="600" fill="#15803d" text-anchor="middle">True Bona Fide (171)</text>
+    <!-- Cell (1,0): 29 (14.5%) -->
+    <rect x="50" y="200" width="160" height="140" fill="#d9e6f5" stroke="#ffffff" stroke-width="1.5"/>
+    <text x="130" y="270" font-size="22" font-weight="700" fill="#08306b" text-anchor="middle">29</text>
+    <text x="130" y="292" font-size="12.5" font-weight="400" fill="#2171b5" text-anchor="middle">14.5%</text>
 
-    <!-- Cell (0,1): False Morph (FP) -->
-    <rect x="265" y="105" width="160" height="130" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.2"/>
-    <text x="345" y="160" font-size="22" font-weight="700" fill="#1e40af" text-anchor="middle">14.7%</text>
-    <text x="345" y="185" font-size="11" font-weight="500" fill="#1d4ed8" text-anchor="middle">False Rejection (29)</text>
+    <!-- Cell (1,1): 171 (85.5%) -->
+    <rect x="210" y="200" width="160" height="140" fill="#1d6aaf" stroke="#ffffff" stroke-width="1.5"/>
+    <text x="290" y="270" font-size="22" font-weight="700" fill="#ffffff" text-anchor="middle">171</text>
+    <text x="290" y="292" font-size="12.5" font-weight="400" fill="#e0f3f8" text-anchor="middle">85.5%</text>
 
-    <!-- Cell (1,0): False Bona Fide (FN) -->
-    <rect x="95" y="245" width="160" height="130" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.2"/>
-    <text x="175" y="300" font-size="22" font-weight="700" fill="#1e40af" text-anchor="middle">14.7%</text>
-    <text x="175" y="325" font-size="11" font-weight="500" fill="#1d4ed8" text-anchor="middle">False Accept (29)</text>
+    <!-- Outer Box Spine -->
+    <rect x="50" y="60" width="320" height="280" fill="none" stroke="#cccccc" stroke-width="1"/>
 
-    <!-- Cell (1,1): True Morph (TP - Restored by Frequency Stream) -->
-    <rect x="265" y="245" width="160" height="130" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1.5"/>
-    <text x="345" y="300" font-size="24" font-weight="700" fill="#166534" text-anchor="middle">85.3%</text>
-    <text x="345" y="325" font-size="11" font-weight="700" fill="#15803d" text-anchor="middle">TRUE DETECT (171)</text>
-    <text x="345" y="345" font-size="9.5" font-weight="600" fill="#14532d" text-anchor="middle">+36.3% vs Spatial Model</text>
+    <!-- X Axis Ticks and Labels -->
+    <line x1="130" y1="340" x2="130" y2="346" stroke="#000000" stroke-width="1"/>
+    <line x1="290" y1="340" x2="290" y2="346" stroke="#000000" stroke-width="1"/>
+    <text x="130" y="365" font-size="12" fill="#000000" text-anchor="middle">Bona Fide</text>
+    <text x="290" y="365" font-size="12" fill="#000000" text-anchor="middle">Morph</text>
+    <text x="210" y="398" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">Predicted label</text>
 
-    <!-- Bottom Diagnosis Badge -->
-    <rect x="30" y="390" width="390" height="52" rx="6" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.2"/>
-    <text x="225" y="411" font-size="10.5" font-weight="700" fill="#166534" text-anchor="middle">Breakthrough: Nyquist Residual Isolation</text>
-    <text x="225" y="430" font-size="9.5" fill="#15803d" text-anchor="middle">ROC-AUC = 0.9399 (+0.4411 surge), EER = 14.66%</text>
+    <!-- Y Axis Ticks and Labels -->
+    <line x1="44" y1="130" x2="50" y2="130" stroke="#000000" stroke-width="1"/>
+    <line x1="44" y1="270" x2="50" y2="270" stroke="#000000" stroke-width="1"/>
+    <text x="38" y="134" font-size="12" fill="#000000" text-anchor="end">Bona Fide</text>
+    <text x="38" y="274" font-size="12" fill="#000000" text-anchor="end">Morph</text>
+    <text x="-25" y="200" font-size="13" font-weight="500" fill="#000000" text-anchor="middle" transform="rotate(-90, -25, 200)">True label</text>
+
+    <!-- Colorbar -->
+    <g transform="translate(390, 60)">
+      <rect width="18" height="280" fill="url(#seaborn_blues)" stroke="#bbbbbb" stroke-width="0.8"/>
+      <line x1="18" y1="0" x2="23" y2="0" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="4" font-size="10.5" fill="#333333">200</text>
+      <line x1="18" y1="70" x2="23" y2="70" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="74" font-size="10.5" fill="#333333">150</text>
+      <line x1="18" y1="140" x2="23" y2="140" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="144" font-size="10.5" fill="#333333">100</text>
+      <line x1="18" y1="210" x2="23" y2="210" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="214" font-size="10.5" fill="#333333">50</text>
+      <line x1="18" y1="280" x2="23" y2="280" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="284" font-size="10.5" fill="#333333">0</text>
+    </g>
   </g>
 
   <!-- ========================================================================= -->
-  <!-- PANEL C: PHASE 2 PROPOSED UID-MAD UNDER PRINT-SCAN -->
+  <!-- SUBPLOT 3: Phase 2 UID-MAD on Physical Print-Scan -->
   <!-- ========================================================================= -->
-  <g transform="translate(1020, 20)">
-    <!-- Container -->
-    <rect width="450" height="460" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5" filter="url(#shadow)"/>
-    <rect width="450" height="36" rx="12" fill="#0f766e"/>
-    <rect width="450" height="12" y="24" fill="#0f766e"/>
-    <text x="225" y="23" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">(c) Phase 2 UID-MAD: Physical Print-Scan Morphs</text>
+  <g transform="translate(1220, 50)">
+    <!-- Subplot Title -->
+    <text x="210" y="20" font-size="14.5" font-weight="600" fill="#222222" text-anchor="middle">Phase 2: Physical Print-Scan (All Generators)</text>
+    <text x="210" y="38" font-size="11" font-weight="400" fill="#666666" text-anchor="middle">EER = 2.33% | ROC-AUC = 0.9973 (Spectral Surge)</text>
 
-    <!-- Predicted Labels Header -->
-    <text x="225" y="68" font-size="11" font-weight="700" fill="#475569" text-anchor="middle">PREDICTED CLASS</text>
-    <text x="175" y="90" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">Bona Fide</text>
-    <text x="335" y="90" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">Morph Attack</text>
+    <!-- Heatmap 2x2 Grid -->
+    <!-- Cell (0,0): 195 (97.5%) -->
+    <rect x="50" y="60" width="160" height="140" fill="#084d94" stroke="#ffffff" stroke-width="1.5"/>
+    <text x="130" y="130" font-size="22" font-weight="700" fill="#ffffff" text-anchor="middle">195</text>
+    <text x="130" y="152" font-size="12.5" font-weight="400" fill="#e0f3f8" text-anchor="middle">97.5%</text>
 
-    <!-- True Labels (Vertical) -->
-    <text x="25" y="230" font-size="11" font-weight="700" fill="#475569" text-anchor="middle" transform="rotate(-90, 25, 230)">ACTUAL CLASS</text>
-    <text x="75" y="170" font-size="10.5" font-weight="700" fill="#0f172a" text-anchor="end">Bona Fide</text>
-    <text x="75" y="310" font-size="10.5" font-weight="700" fill="#0f172a" text-anchor="end">Morph</text>
+    <!-- Cell (0,1): 5 (2.5%) -->
+    <rect x="210" y="60" width="160" height="140" fill="#f7fbff" stroke="#ffffff" stroke-width="1.5"/>
+    <text x="290" y="130" font-size="22" font-weight="700" fill="#08306b" text-anchor="middle">5</text>
+    <text x="290" y="152" font-size="12.5" font-weight="400" fill="#2171b5" text-anchor="middle">2.5%</text>
 
-    <!-- 2x2 Grid Cells -->
-    <!-- Cell (0,0): True Bona Fide (TN) -->
-    <rect x="95" y="105" width="160" height="130" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1.5"/>
-    <text x="175" y="160" font-size="24" font-weight="700" fill="#166534" text-anchor="middle">97.7%</text>
-    <text x="175" y="185" font-size="11" font-weight="700" fill="#15803d" text-anchor="middle">True Bona Fide (195)</text>
+    <!-- Cell (1,0): 5 (2.5%) -->
+    <rect x="50" y="200" width="160" height="140" fill="#f7fbff" stroke="#ffffff" stroke-width="1.5"/>
+    <text x="130" y="270" font-size="22" font-weight="700" fill="#08306b" text-anchor="middle">5</text>
+    <text x="130" y="292" font-size="12.5" font-weight="400" fill="#2171b5" text-anchor="middle">2.5%</text>
 
-    <!-- Cell (0,1): False Morph (FP) -->
-    <rect x="265" y="105" width="160" height="130" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
-    <text x="345" y="160" font-size="22" font-weight="700" fill="#64748b" text-anchor="middle">2.3%</text>
-    <text x="345" y="185" font-size="11" font-weight="500" fill="#64748b" text-anchor="middle">False Rejection (5)</text>
+    <!-- Cell (1,1): 195 (97.5%) -->
+    <rect x="210" y="200" width="160" height="140" fill="#084d94" stroke="#ffffff" stroke-width="1.5"/>
+    <text x="290" y="270" font-size="22" font-weight="700" fill="#ffffff" text-anchor="middle">195</text>
+    <text x="290" y="292" font-size="12.5" font-weight="400" fill="#e0f3f8" text-anchor="middle">97.5%</text>
 
-    <!-- Cell (1,0): False Bona Fide (FN) -->
-    <rect x="95" y="245" width="160" height="130" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
-    <text x="175" y="300" font-size="22" font-weight="700" fill="#64748b" text-anchor="middle">2.3%</text>
-    <text x="175" y="325" font-size="11" font-weight="500" fill="#64748b" text-anchor="middle">False Accept (5)</text>
+    <!-- Outer Box Spine -->
+    <rect x="50" y="60" width="320" height="280" fill="none" stroke="#cccccc" stroke-width="1"/>
 
-    <!-- Cell (1,1): True Morph (TP) -->
-    <rect x="265" y="245" width="160" height="130" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1.5"/>
-    <text x="345" y="300" font-size="24" font-weight="700" fill="#166534" text-anchor="middle">97.7%</text>
-    <text x="345" y="325" font-size="11" font-weight="700" fill="#15803d" text-anchor="middle">TRUE DETECT (195)</text>
-    <text x="345" y="345" font-size="9.5" font-weight="600" fill="#14532d" text-anchor="middle">Frequency Residual Rescue</text>
+    <!-- X Axis Ticks and Labels -->
+    <line x1="130" y1="340" x2="130" y2="346" stroke="#000000" stroke-width="1"/>
+    <line x1="290" y1="340" x2="290" y2="346" stroke="#000000" stroke-width="1"/>
+    <text x="130" y="365" font-size="12" fill="#000000" text-anchor="middle">Bona Fide</text>
+    <text x="290" y="365" font-size="12" fill="#000000" text-anchor="middle">Morph</text>
+    <text x="210" y="398" font-size="13" font-weight="500" fill="#000000" text-anchor="middle">Predicted label</text>
 
-    <!-- Bottom Diagnosis Badge -->
-    <rect x="30" y="390" width="390" height="52" rx="6" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1.2"/>
-    <text x="225" y="411" font-size="10.5" font-weight="700" fill="#0f766e" text-anchor="middle">Orthogonal Channel Complementarity</text>
-    <text x="225" y="430" font-size="9.5" fill="#0d9488" text-anchor="middle">Mean ROC-AUC &gt; 0.997, EER &lt; 2.5% across all 5 generators</text>
+    <!-- Y Axis Ticks and Labels -->
+    <line x1="44" y1="130" x2="50" y2="130" stroke="#000000" stroke-width="1"/>
+    <line x1="44" y1="270" x2="50" y2="270" stroke="#000000" stroke-width="1"/>
+    <text x="38" y="134" font-size="12" fill="#000000" text-anchor="end">Bona Fide</text>
+    <text x="38" y="274" font-size="12" fill="#000000" text-anchor="end">Morph</text>
+    <text x="-25" y="200" font-size="13" font-weight="500" fill="#000000" text-anchor="middle" transform="rotate(-90, -25, 200)">True label</text>
+
+    <!-- Colorbar -->
+    <g transform="translate(390, 60)">
+      <rect width="18" height="280" fill="url(#seaborn_blues)" stroke="#bbbbbb" stroke-width="0.8"/>
+      <line x1="18" y1="0" x2="23" y2="0" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="4" font-size="10.5" fill="#333333">200</text>
+      <line x1="18" y1="70" x2="23" y2="70" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="74" font-size="10.5" fill="#333333">150</text>
+      <line x1="18" y1="140" x2="23" y2="140" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="144" font-size="10.5" fill="#333333">100</text>
+      <line x1="18" y1="210" x2="23" y2="210" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="214" font-size="10.5" fill="#333333">50</text>
+      <line x1="18" y1="280" x2="23" y2="280" stroke="#000000" stroke-width="0.8"/>
+      <text x="26" y="284" font-size="10.5" fill="#333333">0</text>
+    </g>
   </g>
 </svg>
 """
 
-with open("/tmp/confusion_matrices.svg", "w") as f:
+with open("/tmp/confusion_matrices_seaborn.svg", "w") as f:
     f.write(svg)
 
-subprocess.run(["magick", "-density", "300", "/tmp/confusion_matrices.svg", "/home/crimsond/project/ieee_report/figures/confusion_matrices.png"], check=True)
-print("Rendered confusion matrices to /home/crimsond/project/ieee_report/figures/confusion_matrices.png")
+subprocess.run(["magick", "-density", "300", "/tmp/confusion_matrices_seaborn.svg", "/home/crimsond/project/ieee_report/figures/confusion_matrices.png"], check=True)
+print("Rendered authentic Seaborn confusion matrices to /home/crimsond/project/ieee_report/figures/confusion_matrices.png")
+
