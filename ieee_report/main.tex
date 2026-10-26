@@ -17,6 +17,11 @@
 \usepackage{subcaption}
 \usepackage{url}
 
+% Float and text separation tuning to guarantee clean pagination
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\floatsep}{6pt plus 2pt minus 2pt}
+\setlength{\intextsep}{6pt plus 2pt minus 2pt}
+
 
 % =========================================================================
 % MATH OPERATORS AND SYMBOLS
@@ -710,7 +715,11 @@ Evaluated strictly under ISO/IEC 30107-3 standards across 15 operational slices 
 % =========================================================================
 % REFERENCES
 % =========================================================================
+\IEEEtriggeratref{6}
+\begingroup
+\footnotesize
 \bibliographystyle{IEEEtran}
 \bibliography{references}
+\endgroup
 
 \end{document}
