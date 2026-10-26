@@ -16,10 +16,7 @@
 \usepackage{tabularx}
 \usepackage{subcaption}
 \usepackage{url}
-\usepackage{pgfplots}
-\usepackage{tikz}
-\usetikzlibrary{shapes.geometric, arrows.meta, positioning, calc, fit, backgrounds}
-\pgfplotsset{compat=1.18}
+
 
 % =========================================================================
 % MATH OPERATORS AND SYMBOLS
@@ -501,87 +498,11 @@ This proves that spatial and frequency streams are orthogonally complementary: w
 % Full-Width 3-Panel Evaluation Figures (Phase 1 vs 2, Orthogonality, EER)
 \begin{figure*}[t]
 \centering
-\begin{subfigure}[b]{0.32\textwidth}
-\centering
-\begin{tikzpicture}
-\begin{axis}[
-    ybar,
-    bar width=5pt,
-    width=\textwidth,
-    height=4.6cm,
-    ymin=0.4, ymax=1.05,
-    ylabel={ROC-AUC Score},
-    symbolic x coords={OpenCV, FaceMorpher, WebMorph, AMSL, StyleGAN2},
-    xtick=data,
-    x tick label style={font=\tiny, rotate=30, anchor=east},
-    legend style={at={(0.5,-0.38)}, anchor=north, legend columns=-1, font=\tiny},
-    ymajorgrids=true,
-    grid style=dashed,
-]
-\addplot[fill=blue!60, draw=blue!90] coordinates {(OpenCV,0.9993) (FaceMorpher,0.9958) (WebMorph,0.9886) (AMSL,0.9461) (StyleGAN2,0.4988)};
-\addplot[fill=purple!60, draw=purple!90] coordinates {(OpenCV,0.9997) (FaceMorpher,0.9999) (WebMorph,0.9968) (AMSL,0.9938) (StyleGAN2,0.9399)};
-\legend{Phase 1 (Spatial), Phase 2 (Calibrated)}
-\end{axis}
-\end{tikzpicture}
-\caption{Phase 1 vs. Phase 2 (Clean Images)}
-\label{fig:p1_vs_p2_bar}
-\end{subfigure}
-\hfill
-\begin{subfigure}[b]{0.32\textwidth}
-\centering
-\begin{tikzpicture}
-\begin{axis}[
-    ybar,
-    bar width=5pt,
-    width=\textwidth,
-    height=4.6cm,
-    ymin=0.2, ymax=1.05,
-    ylabel={ROC-AUC under Print-Scan},
-    symbolic x coords={OpenCV, FaceMorpher, WebMorph, AMSL, StyleGAN2},
-    xtick=data,
-    x tick label style={font=\tiny, rotate=30, anchor=east},
-    legend style={at={(0.5,-0.38)}, anchor=north, legend columns=-1, font=\tiny},
-    ymajorgrids=true,
-    grid style=dashed,
-]
-\addplot[fill=orange!70, draw=orange!90] coordinates {(OpenCV,0.9143) (FaceMorpher,0.9342) (WebMorph,0.6355) (AMSL,0.3743) (StyleGAN2,0.3155)};
-\addplot[fill=teal!60, draw=teal!90] coordinates {(OpenCV,0.9992) (FaceMorpher,0.9996) (WebMorph,0.9976) (AMSL,0.9981) (StyleGAN2,0.9977)};
-\legend{Spatial AUC, Frequency AUC}
-\end{axis}
-\end{tikzpicture}
-\caption{Stream Orthogonality (Print-Scan)}
-\label{fig:orthogonality_bar}
-\end{subfigure}
-\hfill
-\begin{subfigure}[b]{0.32\textwidth}
-\centering
-\begin{tikzpicture}
-\begin{axis}[
-    ybar,
-    bar width=4.5pt,
-    width=\textwidth,
-    height=4.6cm,
-    ymin=0, ymax=16,
-    ylabel={Equal Error Rate (EER \%)},
-    symbolic x coords={OpenCV, FaceMorpher, WebMorph, AMSL, StyleGAN2},
-    xtick=data,
-    x tick label style={font=\tiny, rotate=30, anchor=east},
-    legend style={at={(0.5,-0.38)}, anchor=north, legend columns=-1, font=\tiny},
-    ymajorgrids=true,
-    grid style=dashed,
-]
-\addplot[fill=blue!70, draw=blue!90] coordinates {(OpenCV,0.74) (FaceMorpher,0.41) (WebMorph,1.96) (AMSL,2.92) (StyleGAN2,14.66)};
-\addplot[fill=red!70, draw=red!90] coordinates {(OpenCV,0.25) (FaceMorpher,0.49) (WebMorph,2.21) (AMSL,3.23) (StyleGAN2,14.33)};
-\addplot[fill=gray!70, draw=gray!90] coordinates {(OpenCV,2.33) (FaceMorpher,1.02) (WebMorph,3.39) (AMSL,6.73) (StyleGAN2,3.92)};
-\legend{Clean, JPEG ($q=30$), Print-Scan}
-\end{axis}
-\end{tikzpicture}
-\caption{Calibrated EER across Conditions}
-\label{fig:calib_eer_bar}
-\end{subfigure}
+\includegraphics[width=\textwidth]{figures/quantitative_eval_charts.png}
 \caption{Empirical quantitative evaluations across the 5 morph generator families: (a) Resolution of the generative blind spot, highlighting the $+0.4411$ AUC surge on StyleGAN2; (b) Orthogonality of streams under analog print-scan filtering, where frequency residuals recover spatial degradation ($>0.997$ AUC across all generators); (c) Calibrated Equal Error Rate (EER \%) demonstrating robust cross-condition stability.}
 \label{fig:quantitative_eval_charts}
 \end{figure*}
+
 
 \subsection{Full 15-Slice FRLL-Morphs Benchmark Record}
 Table~\ref{tab:full_benchmark} compiles the complete official evaluation record across all 15 operational splits. UID-MAD achieved $\ge 0.9809$ ROC-AUC on every subset, with an overall mean of \textbf{0.992 ROC-AUC}.
