@@ -24,4 +24,6 @@ type: log
 - Enforced authentic Seaborn/Kaggle notebook styling on confusion matrices (`figures/confusion_matrices.png`, Figure 4) with standard `Blues` gradient, integer counts, and clean percentage labels.
 - Added qualitative forensic analysis figure (`figures/qualitative_samples.png`, Figure 5) displaying genuine, landmark morph, generative latent morph, and print-scan portraits alongside high-pass Laplacian frequency residuals $R = |I * K|$.
 - Added Table VI providing exemplar quantitative prediction breakdowns ($S_s, S_f, Z_s, Z_f, Z_{\text{final}}$) for validation test portraits.
+- Resolved Overleaf free-tier compile timeout ("Your project needs more compile time") by replacing runtime TikZ/PGFPlots bar rendering with a pre-rendered 300 DPI graphic (`figures/quantitative_eval_charts.png`), removing `pgfplots`/`tikz` packages, and optimizing image memory footprint down to 2.47 MB.
 - Repackaged final Overleaf-ready draft into `ieee_report.zip`.
+
