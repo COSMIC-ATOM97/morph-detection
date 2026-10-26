@@ -418,19 +418,18 @@ Table~\ref{tab:smdd_training_history} compiles the complete in-domain training r
 
 \begin{table*}[t]
 \centering
-\caption{In-Domain Training Convergence History on SMDD (Phase 1 Spatial Baseline vs. Phase 2 UID-MAD Dual-Stream)}
+\caption{In-Domain Training Convergence History on SMDD (Phase 1 Baseline vs. Phase 2 UID-MAD Dual-Stream)}
 \label{tab:smdd_training_history}
-\footnotesize
-\setlength{\tabcolsep}{10pt}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}cclccccc@{}}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}cclccccc@{}}
 \toprule
-\textbf{Phase} & \textbf{Epoch} & \textbf{Optimization Stage} & \textbf{Train Loss} & \textbf{Train Accuracy} & \textbf{Validation Loss} & \textbf{Validation EER} & \textbf{Validation ROC-AUC} \\ \midrule
+\textbf{Phase} & \textbf{Epoch} & \textbf{Optimization Stage} & \textbf{Train Loss} & \textbf{Train Acc.} & \textbf{Val. Loss} & \textbf{Val. EER} & \textbf{Val. ROC-AUC} \\ \midrule
 \multirow{4}{*}{\textbf{Phase 1: Spatial Only}} 
  & 1 & Head Warmup & 0.5422 & 92.06\% & 0.0072 & 0.126\% & 0.999984 \\
  & 2 & Head Warmup & 0.1544 & 95.54\% & 0.0036 & 0.063\% & 0.999993 \\
  & 3 & Head Warmup & 0.1226 & 96.17\% & 0.0061 & 0.037\% & 0.999997 \\
  & 4 & Fine-tune Last 2 Blocks & 0.1223 & 96.15\% & 0.0071 & 0.010\% & 0.999999 \\ \midrule
-\multirow{8}{*}{\textbf{Phase 2: UID-MAD Dual-Stream}} 
+\multirow{8}{*}{\textbf{Phase 2: UID-MAD}} 
  & 1 & Stage 1: Head Warmup & 2.7199 & 92.58\% & $3.28 \times 10^{-3}$ & 0.0201\% & 0.999999 \\
  & 2 & Stage 1: Head Warmup & 1.4864 & 95.96\% & $7.11 \times 10^{-5}$ & 0.0000\% & 1.000000 \\
  & 3 & Stage 1: Head Warmup & 1.1097 & 96.63\% & $4.47 \times 10^{-3}$ & 0.0201\% & 0.999999 \\
@@ -439,7 +438,8 @@ Table~\ref{tab:smdd_training_history} compiles the complete in-domain training r
  & 6 & Stage 2: LoRA Fine-Tuning & 0.5726 & 98.39\% & $4.19 \times 10^{-8}$ & 0.0000\% & 1.000000 \\
  & 7 & Stage 2: LoRA Fine-Tuning & 0.5241 & 98.83\% & $2.92 \times 10^{-8}$ & 0.0000\% & 1.000000 \\
  & 8 & Stage 2: LoRA Fine-Tuning & \textbf{0.5039} & \textbf{99.12\%} & \textbf{$2.50 \times 10^{-8}$} & \textbf{0.0000\%} & \textbf{1.000000} \\ \bottomrule
-\end{tabular*}
+\end{tabular}%
+}
 \end{table*}
 
 \subsection{Phase 1 Baseline: The Generative Collapse}
@@ -453,11 +453,10 @@ An AUC of 0.4988 is mathematically indistinguishable from random chance. Because
 \centering
 \caption{Phase 1 Spatial Baseline Zero-Shot Evaluation across 15 Operational Slices of FRLL-Morphs}
 \label{tab:phase1_frll}
-\footnotesize
-\setlength{\tabcolsep}{12pt}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llcccc@{}}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}llcccc@{}}
 \toprule
-\textbf{Generator Family} & \textbf{Operational Condition} & \textbf{Equal Error Rate (EER)} & \textbf{BPCER @ APCER = 1.0\%} & \textbf{BPCER @ APCER = 5.0\%} & \textbf{ROC-AUC Score} \\ \midrule
+\textbf{Generator Family} & \textbf{Operational Condition} & \textbf{Equal Error Rate (EER)} & \textbf{BPCER @ 1.0\% APCER} & \textbf{BPCER @ 5.0\% APCER} & \textbf{ROC-AUC Score} \\ \midrule
 \multirow{3}{*}{OpenCV} & Clean Digital & \textbf{0.94\%} & \textbf{0.00\%} & \textbf{0.00\%} & \textbf{0.9993} \\
  & JPEG ($q=30$) & 0.94\% & 0.98\% & 0.00\% & 0.9992 \\
  & Print-Scan & 9.16\% & 29.90\% & 15.70\% & 0.9786 \\ \midrule
@@ -473,7 +472,8 @@ An AUC of 0.4988 is mathematically indistinguishable from random chance. Because
 \multirow{3}{*}{StyleGAN2} & Clean Digital & \textbf{51.00\%} & \textbf{99.50\%} & \textbf{99.00\%} & \textbf{0.4988} \\
  & JPEG ($q=30$) & 50.00\% & 99.50\% & 98.50\% & 0.4973 \\
  & Print-Scan & 45.80\% & 96.10\% & 88.20\% & 0.5780 \\ \bottomrule
-\end{tabular*}
+\end{tabular}%
+}
 \end{table*}
 
 \subsection{Phase 2 Breakthrough: Resolving Generative Morphs}
@@ -590,9 +590,8 @@ Table~\ref{tab:full_benchmark} compiles the complete official evaluation record 
 \centering
 \caption{Complete 15-Slice FRLL-Morphs Benchmark Results under ISO/IEC 30107-3 Biometric Standards}
 \label{tab:full_benchmark}
-\scriptsize
-\setlength{\tabcolsep}{4.5pt}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llcccccccr@{}}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}llcccccccr@{}}
 \toprule
 \textbf{Generator} & \textbf{Condition} & \textbf{Spatial AUC / EER} & \textbf{Freq AUC / EER} & \textbf{Fused Head AUC} & \textbf{Calibrated AUC} & \textbf{Calibrated EER} & \textbf{BPCER@1\%} & \textbf{BPCER@5\%} & \textbf{Val Loss} \\ \midrule
 \multirow{3}{*}{OpenCV} & Clean & 0.9991 / 0.53\% & 0.8564 / 23.03\% & 0.2937 & \textbf{0.9997} & \textbf{0.74\%} & 0.00\% & 0.00\% & 13.28 \\
@@ -610,7 +609,8 @@ Table~\ref{tab:full_benchmark} compiles the complete official evaluation record 
 \multirow{3}{*}{AMSL} & Clean & 0.9982 / 2.01\% & 0.6605 / 37.99\% & 0.3748 & \textbf{0.9938} & \textbf{2.92\%} & 16.18\% & 0.98\% & 15.78 \\
  & JPEG ($q=30$) & 0.9979 / 2.15\% & 0.6634 / 37.37\% & 0.3899 & \textbf{0.9935} & \textbf{3.23\%} & 16.18\% & 1.47\% & 15.78 \\
  & Print-Scan & 0.3743 / 59.43\% & \textbf{0.9981 / 1.52\%} & 0.2259 & \textbf{0.9809} & \textbf{6.73\%} & 14.22\% & 8.33\% & 17.08 \\ \bottomrule
-\end{tabular*}
+\end{tabular}%
+}
 \end{table*}
 
 % =========================================================================
@@ -631,8 +631,7 @@ To justify each architectural component, seven variants were evaluated on FRLL-M
 \centering
 \caption{Architectural and Fusion Ablation on FRLL-Morphs Across Operational Slices}
 \label{tab:ablation}
-\footnotesize
-\setlength{\tabcolsep}{5.5pt}
+\resizebox{\textwidth}{!}{%
 \begin{tabularx}{\textwidth}{@{}lccccX@{}}
 \toprule
 \textbf{Architecture Variant} & \textbf{OpenCV (Clean)} & \textbf{StyleGAN2 (Clean)} & \textbf{StyleGAN2 (P-S)} & \textbf{Min AUC} & \textbf{Diagnostic Finding and Operational Impact} \\ \midrule
@@ -643,7 +642,8 @@ Phase 2 Spatial Head Only & 0.9991 / 0.53\% & 0.9116 / 17.0\% & 0.3155 & 0.3155 
 Phase 2 Frequency Head Only & 0.8564 / 23.0\% & 0.7644 / 29.9\% & 0.9977 & 0.6605 & Sub-optimal sensitivity to fine spatial blending seams. \\
 Phase 2 Fused ArcFace Head & 0.2937 & 0.1305 & 0.3952 & 0.0324 & Uncalibrated joint cosine margin collapses out-of-distribution. \\
 \textbf{Phase 2 Calibrated (Proposed)} & \textbf{0.9997 / 0.74\%} & \textbf{0.9399 / 14.66\%} & \textbf{0.9854} & \textbf{0.9809} & \textbf{Robust zero-shot generalization across all 15 operational slices.} \\ \bottomrule
-\end{tabularx}
+\end{tabularx}%
+}
 \end{table*}
 
 \subsection{Multi-Stream ROC Curve Analysis}
@@ -679,6 +679,22 @@ Figure~\ref{fig:roc_comparison} presents the official empirical ROC curves:
 \label{fig:roc_comparison}
 \end{figure*}
 
+\subsection{Empirical Confusion Matrix and Operational Error Distribution}
+Figure~\ref{fig:confusion_matrices} illustrates the empirical confusion matrices across critical operational scenarios evaluated at the EER operating threshold:
+\begin{itemize}
+    \item \textbf{Generative Collapse (Figure~\ref{fig:confusion_matrices}a):} On \texttt{morph\_stylegan}, the Phase 1 spatial baseline exhibits a catastrophic $51.0\%$ False Acceptance Rate (102 out of 200 morph attacks verified as genuine), confirming that spatial patch self-attention is blind to neural latent interpolations.
+    \item \textbf{Frequency Recovery (Figure~\ref{fig:confusion_matrices}b):} With the integration of Stream B, UID-MAD elevates true morph detection to $85.3\%$ at the strict EER threshold (and $>96.1\%$ at $\text{APCER}=5\%$), slashing false acceptances from $51.0\%$ down to $14.7\%$.
+    \item \textbf{Print-Scan Robustness (Figure~\ref{fig:confusion_matrices}c):} Under physical print-scan degradation, while analog low-pass filtering degrades spatial seams, high-frequency ink dispersion paradoxically empowers the spectral stream, achieving $97.7\%$ True Detection ($2.3\%$ EER) across physical credential workflows.
+\end{itemize}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/confusion_matrices.png}
+\caption{Empirical confusion matrices at ISO/IEC 30107-3 operational thresholds across 200-sample evaluation subsets: (a) Phase 1 spatial baseline suffering 51.0\% False Acceptance on StyleGAN2; (b) Phase 2 UID-MAD restoring true morph detection to 85.3\% at EER; (c) Physical print-scan credential evaluation demonstrating 97.7\% true detection driven by spectral residual surge.}
+\label{fig:confusion_matrices}
+\end{figure*}
+
+
 % =========================================================================
 % SECTION VII: EDGE DEPLOYMENT & FUTURE WORK
 % =========================================================================
@@ -697,8 +713,8 @@ Table~\ref{tab:param_profile} details the parameter count and single-image laten
 \centering
 \caption{Parameter Count and Single-Image Inference Latency Profile (Dual NVIDIA T4 GPUs)}
 \label{tab:param_profile}
-\footnotesize
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lccccr@{}}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lccccr@{}}
 \toprule
 \textbf{Architectural Sub-Module} & \textbf{Total Parameters} & \textbf{Trainable Parameters (Stage 2)} & \textbf{Parameter Share (\%)} & \textbf{Precision} & \textbf{Single-Image Latency} \\ \midrule
 Stream A: DINOv2 ViT-S/14 Backbone & 21.60\,M & 0.59\,M (LoRA rank-16) & 96.5\% & FP16 & 14.2\,ms \\
@@ -708,7 +724,8 @@ Stream B: Residual 4-Stage ConvNet & 0.22\,M & 0.22\,M & 1.0\% & FP16 & 1.6\,ms 
 Cross-Stream Alignment \& Gating Network & 0.10\,M & 0.10\,M & 0.4\% & FP16 & 0.4\,ms \\
 Decoupled ArcFace Classification Heads ($3 \times 2$) & 0.001\,M & 0.001\,M & $< 0.1\%$ & FP16 & 0.1\,ms \\ \midrule
 \textbf{Total UID-MAD Architecture} & \textbf{22.38\,M} & \textbf{1.37\,M (6.1\% of total)} & \textbf{100.0\%} & \textbf{FP16} & \textbf{17.3\,ms} \\ \bottomrule
-\end{tabular*}
+\end{tabular}%
+}
 \end{table*}
 
 \subsection{Phase 3 Edge Engineering Stack}

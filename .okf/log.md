@@ -20,4 +20,6 @@ type: log
 - Overhauled system architecture graphic: migrated from overflowing TikZ to a 300 DPI vector graphic (`figures/system_architecture.png`) featuring 3D isometric convolutional feature maps and clear feature token bars.
 - Streamlined author block for B.Tech mid-semester evaluation: consolidated four separate repeating department addresses into a single shared affiliation with Himank Gupta first-listed.
 - Converted Table IV and Table V to auto-wrapping full-width environments (`tabularx` with `X` column and `tabular*`) to resolve right-margin overflow.
+- Resolved all table margin overflows across Tables I, II, III, IV, and V by wrapping in `\resizebox{\textwidth}{!}{...}`, guaranteeing zero margin clipping.
+- Added 3-panel empirical confusion matrix figure (`figures/confusion_matrices.png`, Figure 4) illustrating the 51.0% generative collapse on StyleGAN2 and the dual-stream restoration.
 - Re-packaged complete Overleaf-ready project into `ieee_report.zip`.
