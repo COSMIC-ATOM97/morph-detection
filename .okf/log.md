@@ -34,5 +34,6 @@ type: log
 - Removed `[Team Lead]` from author block on Page 1, normalized excessive in-sentence and table bolding, removed raw markdown artifacts, and wrapped all 6 tables in `\resizebox{\textwidth}{!}{...}` to eliminate page margin clipping.
 - Purged all "mid-semester" and academic semester markers across the title block, abstract, Section 2, Section 5, Section 6, and Section 7.
 - Harmonized all 14 bibliographic citations across the text, `thebibliography`, and `references.bib` in exact sequential order [1] through [14].
+- Updated student branch designation to `B.Tech (Information Technology)` and course code to `ITPC401`.
 - Repackaged into `ieee_report.zip` (2.3 MB) for instant one-click Overleaf compilation.
 
