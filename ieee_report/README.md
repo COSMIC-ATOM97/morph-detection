@@ -2,7 +2,7 @@
 
 This directory contains the complete IEEE-format manuscript and assets for:
 **"UID-MAD: Unified Interpretable Dual-Stream Face Morph Attack Detection via Spatial Foundation Transformers and Spectral Residuals"**  
-*B.Tech Major Project Mid-Semester Evaluation (CSPC401) — NIT Kurukshetra*
+*B.Tech Major Project Technical Report (ITPC401) - NIT Kurukshetra*
 
 ---
 
