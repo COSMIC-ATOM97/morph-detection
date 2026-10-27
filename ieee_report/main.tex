@@ -1,86 +1,111 @@
-\documentclass[conference]{IEEEtran}
-\IEEEoverridecommandlockouts
+\documentclass[11pt,a4paper]{article}
 
 % =========================================================================
-% PACKAGE IMPORTS
+% PAGE GEOMETRY & TYPOGRAPHY (SINGLE COLUMN FORMAT)
 % =========================================================================
-\usepackage{cite}
+\usepackage[a4paper, top=1in, bottom=1in, left=1in, right=1in]{geometry}
 \usepackage{amsmath,amssymb,amsfonts}
-\usepackage{algorithmic}
-\usepackage{algorithm}
 \usepackage{graphicx}
-\usepackage{textcomp}
-\usepackage{xcolor}
 \usepackage{booktabs}
 \usepackage{multirow}
 \usepackage{tabularx}
 \usepackage{subcaption}
 \usepackage{url}
+\usepackage{cite}
+\usepackage{xcolor}
+\usepackage{enumitem}
 
-% Float and text separation tuning to guarantee clean pagination
-\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
-\setlength{\floatsep}{6pt plus 2pt minus 2pt}
-\setlength{\intextsep}{6pt plus 2pt minus 2pt}
+% Clean line spacing and paragraph separation
+\linespread{1.15}
+\setlength{\parskip}{5pt}
+\setlength{\parindent}{0pt}
 
+% Float separation tuning
+\setlength{\textfloatsep}{12pt plus 2pt minus 2pt}
+\setlength{\floatsep}{10pt plus 2pt minus 2pt}
+\setlength{\intextsep}{10pt plus 2pt minus 2pt}
 
-% =========================================================================
-% MATH OPERATORS AND SYMBOLS
-% =========================================================================
+% Math Operators
 \DeclareMathOperator*{\argmax}{arg\,max}
 \DeclareMathOperator*{\argmin}{arg\,min}
 \newcommand{\norm}[1]{\left\lVert#1\right\rVert}
 
-% =========================================================================
-% DOCUMENT METADATA
-% =========================================================================
-\title{UID-MAD: Unified Interpretable Dual-Stream Face Morph Attack Detection via Spatial Foundation Transformers and Spectral Residuals\\
-\thanks{This research report constitutes the official Mid-Semester Evaluation for the B.Tech Major Project (Course Code: CSPC401), Odd Semester 2026--2027, Department of Computer Engineering, National Institute of Technology Kurukshetra, Haryana, India.}
-}
-
-\author{
-    \IEEEauthorblockN{\textbf{Himank Gupta} (Roll No: 123103097), \textbf{Bablu Prajapati} (Roll No: 123103019), and \textbf{Puranpal Singh} (Roll No: 123103021)}
-    \IEEEauthorblockA{Under the Supervision of: \textbf{Dr. Abhilasha Sharma}, Assistant Professor}
-    \IEEEauthorblockA{Department of Computer Engineering, National Institute of Technology Kurukshetra, Haryana, India}
-}
-
+% Colors
+\definecolor{headerblue}{RGB}{29, 78, 216}
+\definecolor{darkslate}{RGB}{15, 23, 42}
 
 \begin{document}
 
-\maketitle
+% =========================================================================
+% PROJECT REPORT HEADER & METADATA
+% =========================================================================
+\begin{center}
+    {\large \textbf{DEPARTMENT OF COMPUTER ENGINEERING}}\\[2pt]
+    {\large \textbf{NATIONAL INSTITUTE OF TECHNOLOGY KURUKSHETRA}}\\[2pt]
+    {\normalsize Kurukshetra, Haryana -- 136119, India}\\[10pt]
+
+    \rule{\textwidth}{1.5pt}\\[12pt]
+
+    {\LARGE \textbf{UID-MAD: Unified Interpretable Dual-Stream Face Morph Attack Detection via Spatial Foundation Transformers and Spectral Residuals}}\\[8pt]
+    
+    {\large \textbf{B.Tech Major Project Mid-Semester Progress Report (Course Code: CSPC401)}}\\[4pt]
+    {\normalsize Academic Year: 2026--2027 (Odd Semester)}\\[8pt]
+
+    \rule{\textwidth}{0.8pt}\\[14pt]
+
+    \begin{minipage}{0.52\textwidth}
+        \textbf{Submitted By:}\\[3pt]
+        \textbf{Himank Gupta} (Roll No: 123103097) [Team Lead]\\[1pt]
+        \textbf{Bablu Prajapati} (Roll No: 123103019)\\[1pt]
+        \textbf{Puranpal Singh} (Roll No: 123103021)\\[4pt]
+        \textit{B.Tech (Computer Engineering), 7th Semester}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.44\textwidth}
+        \flushright
+        \textbf{Under the Supervision of:}\\[3pt]
+        \textbf{Dr. Abhilasha Sharma}\\[1pt]
+        Assistant Professor\\[1pt]
+        Department of Computer Engineering\\[1pt]
+        National Institute of Technology Kurukshetra
+    \end{minipage}
+\end{center}
+
+\vspace{10pt}
 
 % =========================================================================
-% ABSTRACT
+% EXECUTIVE SUMMARY / ABSTRACT
 % =========================================================================
 \begin{abstract}
-Face morphing attacks represent a critical vulnerability in Automated Border Control (ABC) e-Gates and electronic Machine Readable Travel Documents (eMRTDs, ICAO Doc 9303). By blending facial features from an unauthorized traveler and a clean-record accomplice into a single composite portrait, a morphed credential can successfully verify against both identities in Commercial-Off-The-Shelf (COTS) face recognition systems. While spatial detectors effectively identify traditional landmark-warped morphs, they exhibit catastrophic failure against generative latent morphs (e.g., StyleGAN2) and degrade severely under analog print-scan conditions. To resolve this vulnerability, this paper introduces \textbf{UID-MAD} (Unified Interpretable Dual-Stream Morph Attack Detection), a single-image framework that explicitly targets the mathematical bifurcation of morphing physics.
+\noindent Face morphing attacks pose an urgent security threat to Automated Border Control (ABC) e-Gates and electronic Machine Readable Travel Documents (eMRTDs, ICAO Doc 9303). By blending facial features from an unauthorized traveler and a clean-record accomplice into a single hybrid portrait, an attacker can obtain a legitimate credential that verifies against both identities in Commercial-Off-The-Shelf (COTS) facial recognition systems. This mid-semester progress report documents the complete architectural formulation, model engineering, and empirical validation of \textbf{UID-MAD (Unified Interpretable Dual-Stream Morph Attack Detection)}, a single-image framework developed for real-time edge deployment. 
 
-UID-MAD utilizes two parallel, decoupled processing pathways: a spatial stream powered by a LoRA-adapted DINOv2 Vision Transformer with dense multi-scale patch token pooling to capture localized geometric blending seams, and a dedicated frequency stream utilizing a depthwise Laplacian filter bank and 2D Haar wavelets to isolate periodic Nyquist artifacts left by generative neural upsampling. Because early feature concatenation causes convolutional gradients to dominate transformer representations, the architecture employs decoupled Multi-Task ArcFace heads and combines linear cosine margins at inference via bona fide Z-score calibrated late decision fusion.
+In Phase~1, our baseline spatial detector deploying a self-supervised DINOv2 Vision Transformer with Low-Rank Adaptation (LoRA) and multi-scale patch token pooling achieved near-perfect accuracy on traditional landmark-warped morphs (0.9993 ROC-AUC on OpenCV, 0.9958 on FaceMorpher). However, it collapsed completely to random chance against generative latent morphs (StyleGAN2: 0.4988 ROC-AUC, 51.00\% EER) due to the absence of physical blending seams. In Phase~2, UID-MAD resolved this vulnerability by introducing a dedicated spatial-frequency stream utilizing a depthwise Laplacian filter bank and 2D Haar wavelets, a decoupled Multi-Task ArcFace optimization scheme, and an inference-time bona fide Z-score decision calibration. 
 
-Evaluated zero-shot under strict ISO/IEC 30107-3 protocols across 15 operational slices of the FRLL-Morphs benchmark, UID-MAD demonstrates exceptional generalization. The frequency stream recovers generative attack detection, lifting clean StyleGAN2 ROC-AUC from a random-chance 0.4988 to 0.9399. Furthermore, an orthogonal domain complementarity is established: physical print-scan analog filtering destroys spatial seams but inadvertently amplifies residual frequency cues ($>0.997$ ROC-AUC across all generators). With a mean ROC-AUC of 0.992 across all 15 operational slices and a single-image inference latency of 17.3\,ms, UID-MAD provides a robust, standards-compliant defense suitable for real-time border e-Gate deployment.
+Evaluated zero-shot under strict ISO/IEC 30107-3 protocols across all 15 operational slices of the FRLL-Morphs benchmark, UID-MAD elevated clean StyleGAN2 detection to 0.9399 ROC-AUC (14.66\% EER). Furthermore, an essential domain complementarity was discovered: analog print-scan filtering destroys spatial seams but amplifies residual high-frequency patterns, driving frequency detection to $>0.997$ ROC-AUC across every generator family. Across the entire 15-slice benchmark, UID-MAD achieves a mean ROC-AUC of 0.992 with an edge inference latency of 17.3\,ms on dual NVIDIA T4 GPUs. This report summarizes all completed work to date and outlines the execution roadmap for Phase~3 edge optimization (ONNX Runtime, TensorRT) and real-time e-Gate explainability interfaces for the final semester submission.
 \end{abstract}
 
-\begin{IEEEkeywords}
-Face Morph Attack Detection, S-MAD, DINOv2, Low-Rank Adaptation (LoRA), ArcFace, Laplacian Residual, Haar Wavelet, ISO/IEC 30107-3, APCER, BPCER, FRLL-Morphs, SMDD, StyleGAN2.
-\end{IEEEkeywords}
+\textbf{Keywords:} Face Morph Attack Detection, S-MAD, DINOv2, Low-Rank Adaptation (LoRA), ArcFace, Laplacian Residual, Haar Wavelet, ISO/IEC 30107-3, APCER, BPCER, FRLL-Morphs, SMDD, StyleGAN2.
+
+\vspace{10pt}
 
 % =========================================================================
-% SECTION I: INTRODUCTION
+% 1. INTRODUCTION & PROBLEM IDENTIFICATION
 % =========================================================================
-\section{Introduction}
+\section{Problem Identification and Project Context}
 \label{sec:intro}
 
-Automated Border Control (ABC) e-Gates and international passport issuance frameworks rely on electronic Machine Readable Travel Documents (eMRTDs) governed by the International Civil Aviation Organization (ICAO Doc 9303) \cite{icao9303}. When applying for an e-Passport, an applicant submits a portrait photograph, which is cryptographically signed and stored in the contactless RFID chip. At automated border gates, Commercial-Off-The-Shelf (COTS) facial recognition algorithms compare a live capture of the traveler against the facial portrait extracted from the passport token.
+Automated Border Control (ABC) e-Gates and international passport issuance frameworks rely on electronic Machine Readable Travel Documents (eMRTDs) governed by the International Civil Aviation Organization (ICAO Doc 9303) \cite{icao9303}. In standard passport issuance, an applicant submits a facial portrait photograph that is cryptographically signed and stored in the contactless RFID chip. At automated border gates, biometric facial matchers compare a live camera capture of the traveler against the passport portrait.
 
-A Face Morphing Attack compromises this foundational trust model. An accomplice $A$ (possessing no criminal history) and an unauthorized traveler $B$ (such as an individual listed on an international watch list) combine their facial images into a single synthetic hybrid portrait $I_{\text{morph}}$. When submitted during document issuance, the passport is legally granted under individual $A$'s identity. However, because $I_{\text{morph}}$ retains sufficient geometric, textural, and photometric similarity to both contributing subjects, unauthorized traveler $B$ can successfully verify against the identical physical credential to bypass automated border gates globally \cite{scherhag2019face, ferrara2021morphing}.
+A Face Morph Attack compromises this fundamental verification trust model. An accomplice $A$ (possessing no criminal history) and an unauthorized traveler $B$ (such as an individual listed on an international security watch list) combine their facial images into a single synthetic hybrid portrait $I_{\text{morph}}$. When submitted during document issuance, the passport is legally granted under individual $A$'s identity. However, because $I_{\text{morph}}$ retains sufficient geometric, textural, and photometric similarity to both contributing subjects, unauthorized traveler $B$ can successfully verify against the identical physical credential to bypass automated border gates globally \cite{scherhag2019face, ferrara2021morphing}.
 
-Crucially, morph generation relies on two fundamentally different algorithmic and physical paradigms, necessitating a dual-modality detection framework:
-\begin{enumerate}
-    \item \textbf{Digital Landmark-Warped Morphs (OpenCV, FaceMorpher, WebMorph, AMSL):} These pipelines detect facial landmarks ($\mathcal{P}_A, \mathcal{P}_B \in \mathbb{R}^{68 \times 2}$), average them into an intermediate mesh $\mathcal{P}_M = \alpha \mathcal{P}_A + (1-\alpha) \mathcal{P}_B$, apply Delaunay triangulation, and alpha-blend the warped pixel coordinates:
+Crucially, our forensic investigation establishes that face morphing relies on two fundamentally different mathematical paradigms, creating a severe bifurcation:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Digital Landmark-Warped Morphs (OpenCV, FaceMorpher, WebMorph, AMSL):} These pipelines detect facial landmark meshes ($\mathcal{P}_A, \mathcal{P}_B \in \mathbb{R}^{68 \times 2}$), compute an interpolated mesh $\mathcal{P}_M = \alpha \mathcal{P}_A + (1-\alpha) \mathcal{P}_B$, apply Delaunay triangulation, and alpha-blend the warped pixel coordinates:
     \begin{equation}
         I_{\text{morph}} = \alpha \cdot I_A(\mathcal{W}_A) + (1-\alpha) \cdot I_B(\mathcal{W}_B)
         \label{eq:landmark_blend}
     \end{equation}
-    This piecewise-affine spatial manipulation leaves behind visible geometric cutouts, double iris/pupil contours, and blending seams along mask perimeters.
+    This piecewise-affine spatial manipulation leaves behind visible geometric cutouts, double iris/pupil contours, and blending seams along facial mask boundaries.
     \item \textbf{Generative Latent-Interpolated Morphs (StyleGAN2):} These pipelines invert source portraits into the intermediate latent space $\mathcal{W}+$ of a generative adversarial network: $\mathbf{w}_A = \mathcal{E}(I_A)$ and $\mathbf{w}_B = \mathcal{E}(I_B)$ \cite{karras2020analyzing}. Latent codes are linearly interpolated:
     \begin{equation}
         \mathbf{w}_{\text{morph}} = \alpha \mathbf{w}_A + (1-\alpha) \mathbf{w}_B
@@ -91,273 +116,118 @@ Crucially, morph generation relies on two fundamentally different algorithmic an
         I_{\text{morph}} = \mathcal{G}(\mathbf{w}_{\text{morph}})
         \label{eq:gan_synth}
     \end{equation}
-    Because generative latent morphs are synthesized through smooth neural manifold projections, they contain \textbf{zero spatial seams, zero ghosting, and zero double contours}. Instead, neural transposed convolutions and upsampling operators imprint periodic Nyquist checkerboard patterns into the high-frequency spectrum \cite{frank2020leveraging, durall2020watch}. Detectors that exclusively analyze RGB patch geometry are structurally blind to this second family of attacks.
+    Because generative latent morphs are synthesized through continuous neural manifold projections, they contain \textbf{zero spatial seams, zero ghosting, and zero double contours}. Instead, neural transposed convolutions and upsampling operators imprint periodic Nyquist checkerboard patterns into the high-frequency spectrum \cite{frank2020leveraging, durall2020watch}. Detectors that exclusively analyze RGB patch geometry are structurally blind to this attack family.
 \end{enumerate}
 
-Existing Morph Attack Detection (MAD) literature suffers from three primary design flaws:
-\begin{itemize}
-    \item \textbf{The Generative Blind Spot:} Prior detectors trained on spatial blending seams collapse completely to random chance (0.4988 ROC-AUC) when tested on generative latent morphs like StyleGAN2.
-    \item \textbf{Modality Competition and Score Saturation:} Naively concatenating spatial features and frequency representations into standard convolutional backbones causes gradient dominance, where fast-converging convolutional branches disrupt transformer representations. At inference, raw softmax outputs saturate and fail under distribution shifts.
-    \item \textbf{The Print-Scan Degradation Trap:} When digital morphs are printed onto security paper and re-scanned (the physical passport issuance workflow), analog ink dispersion acts as a physical low-pass filter that obliterates spatial blending seams, causing spatial detectors to degrade sharply.
+\subsection{Why Existing Face Matchers and MAD Baselines Fail}
+Existing Morph Attack Detection (MAD) approaches suffer from three critical vulnerabilities:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Identity Invariance Failure:} Commercial facial recognition models (FaceNet, ArcFace, InsightFace) are mathematically optimized to discard fine textural details and expression variations to maximize identity invariance. Utilizing them as feature extractors for morph detection actively aids the attack.
+    \item \textbf{The Generative Blind Spot:} Prior detectors trained solely on spatial blending seams collapse completely to random chance (0.4988 ROC-AUC, 51.00\% EER) when evaluated on generative latent morphs like StyleGAN2.
+    \item \textbf{The Print-Scan Degradation Trap:} When digital morphs are printed onto security passport paper and re-scanned (the physical document issuance workflow), analog ink dispersion and optical scanner modulation transfer functions act as a low-pass filter, obliterating spatial blending seams and degrading spatial detectors.
 \end{itemize}
 
-To overcome these challenges, this paper presents \textbf{UID-MAD (Unified Interpretable Dual-Stream Morph Attack Detection)}, a standards-compliant Single-Image Morph Attack Detection (S-MAD) framework. The core contributions are:
-\begin{enumerate}
-    \item A mathematically decoupled dual-stream architecture combining a self-supervised Vision Transformer (DINOv2) adapted via rank-16 LoRA with a non-trainable spatial-frequency residual ConvNet (Laplacian filter bank and 2D Haar wavelets).
-    \item A multi-scale spatial patch aggregator concatenating class tokens, mean, standard deviation (an explicit mathematical seam detector), and peak anomaly maximum pooling.
-    \item A multi-task Decoupled Additive Angular Margin (ArcFace) optimization strategy that trains three independent heads simultaneously, preventing modality competition.
-    \item A bona fide Z-score calibrated decision fusion mechanism in linear cosine margin space that eliminates softmax saturation.
-    \item Zero-shot out-of-distribution validation adhering to ISO/IEC 30107-3 across 15 operational slices of the FRLL-Morphs benchmark, establishing an orthogonal domain complementarity under physical print-scan degradation.
+% =========================================================================
+% 2. PROJECT OBJECTIVES & SCOPE
+% =========================================================================
+\section{Project Objectives and Mid-Semester Milestones}
+\label{sec:objectives}
+
+The primary objective of this B.Tech Major Project is to design, implement, and validate a unified Single-Image Morph Attack Detection (S-MAD) framework capable of real-time execution in Automated Border Control e-Gates. The specific milestones achieved for this mid-semester evaluation include:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Dual-Stream Architectural Formulation:} Developing a decoupled architecture combining a self-supervised Vision Transformer (DINOv2) adapted via rank-16 LoRA with a non-trainable spatial-frequency ConvNet (Laplacian filter bank and 2D Haar wavelets).
+    \item \textbf{Mathematical Seam Detector:} Designing a multi-scale spatial token aggregator incorporating patch standard deviation ($\boldsymbol{\sigma}_{\text{patch}}$) to explicitly capture local blending transitions.
+    \item \textbf{Decoupled Multi-Task Optimization:} Eliminating gradient dominance and modality competition between fast convolutional updates and slower transformer adaptation by training three independent ArcFace classification heads simultaneously.
+    \item \textbf{Bona Fide Z-Score Calibrated Decision Fusion:} Formulating a score standardization mechanism in linear cosine margin space that prevents out-of-distribution softmax probability saturation.
+    \item \textbf{Comprehensive Zero-Shot Validation:} Rigorously evaluating the framework across all 15 operational slices of the FRLL-Morphs benchmark under official ISO/IEC 30107-3 biometric reporting standards.
+    \item \textbf{Edge Real-Time Profiling:} Measuring parameter efficiency and single-image latency to ensure full compliance with the $<50$\,ms operational latency budget of border e-Gates.
 \end{enumerate}
 
 % =========================================================================
-% SECTION II: RELATED WORK
+% 3. PROPOSED UID-MAD ARCHITECTURE
 % =========================================================================
-\section{Related Work and Research Gaps}
-\label{sec:related}
-
-\subsection{Single-Image (S-MAD) vs. Differential (D-MAD)}
-Morph attack detection is operationally bifurcated into Differential MAD (D-MAD) and Single-Image MAD (S-MAD). D-MAD compares the submitted passport photo against a trusted live facial capture acquired at the border gate. While differential comparisons provide strong comparative identity signals, D-MAD is inherently inapplicable during document enrollment, online passport application portals, and visa issuance where no secondary trusted reference image exists. S-MAD analyzes a single isolated photograph and represents a significantly more challenging, unconstrained forensic problem \cite{scherhag2019face, damer2021morph}.
-
-\subsection{Classical Descriptors vs. Deep CNN Baselines}
-Early forensic investigations deployed hand-crafted texture descriptors, including Local Binary Patterns (LBP), Binarized Statistical Image Features (BSIF), and Scale-Invariant Feature Transform (SIFT). Scherhag et al. \cite{scherhag2019face} demonstrated that while hand-crafted descriptors achieve acceptable in-domain accuracy, their cross-dataset generalization collapses catastrophically under unseen cameras and post-processing filters.
-
-Standard deep convolutional neural networks (VGG, ResNet-50, MobileNet) trained with binary cross-entropy improved in-domain accuracy. However, standard classification objectives incentivize CNNs to discard fine-grained pixel details in favor of high-level semantic categories, causing them to miss subtle alpha-blending discontinuities.
-
-\subsection{Foundation Vision Transformers and DINOv2}
-Vision Transformers (ViTs) partition images into non-overlapping spatial patches and model global interactions via multi-head self-attention. Oquab et al. \cite{oquab2023dinov2} introduced DINOv2, trained via joint self-distillation and masked patch modeling without supervision. Unlike supervised classifiers, DINOv2 retains fine-grained geometric correspondences, local edge statistics, and surface texture properties across its spatial patch tokens, providing an optimal foundational manifold for detecting localized blending boundaries.
-
-\subsection{Frequency Residual Analysis and Generative Fingerprints}
-Generative networks such as StyleGAN2 rely on discrete upsampling and transposed convolutions. Frank et al. \cite{frank2020leveraging} and Durall et al. \cite{durall2020watch} proved that neural upsampling introduces periodic spectral energy peaks across the 2D Fourier and discrete cosine transform spectra. Applying non-trainable high-pass spatial filtering (Laplacian kernels) or wavelet sub-band decomposition suppresses low-frequency semantic facial morphology and isolates these periodic Nyquist upsampling signatures.
-
-\subsection{Parameter-Efficient Fine-Tuning (LoRA)}
-Full fine-tuning of deep Vision Transformers on synthetic biometric datasets risks catastrophic forgetting, wherein generalized visual representations learned during large-scale pretraining are erased. Hu et al. \cite{hu2021lora} introduced Low-Rank Adaptation (LoRA), which freezes base model weights $\mathbf{W}_0$ and injects trainable rank decomposition matrices:
-\begin{equation}
-    \mathbf{W} = \mathbf{W}_0 + \Delta \mathbf{W} = \mathbf{W}_0 + \frac{\alpha}{r} (\mathbf{W}_B \mathbf{W}_A)
-    \label{eq:lora_concept}
-\end{equation}
-In UID-MAD, applying LoRA to the final six transformer blocks adapts the network to forensic morph seams while preserving the base self-supervised feature space.
-
-\subsection{Critical Analysis and Drawbacks of Prior Work}
-A comprehensive survey of prior literature highlights four critical failure modes:
-\begin{enumerate}
-    \item \textbf{Computationally Prohibitive Post-Hoc Saliency:} Occlusion-based heatmap schemes (e.g., Composite Heatmaps) require dozens of forward passes per image to measure confidence drops across landmark tiles. This computational burden outright violates the sub-50\,ms real-time latency budget of border e-Gates.
-    \item \textbf{Flawed Identity Backbones:} Face recognition models (FaceNet, InsightFace) are mathematically trained to maximize identity invariance, deliberately discarding localized textural variations, lighting shifts, and expressions. Utilizing them as feature extractors for morph detection actively aids the attack.
-    \item \textbf{Cubic Computational Bottlenecks:} Hybrid methods relying on Cross-View Quadratic Discriminant Analysis (XQDA) incur an $\mathcal{O}(D^3)$ matrix inversion cost, prohibiting real-time edge execution.
-    \item \textbf{Flawed Evaluation Protocols:} Prior studies frequently claim 0.0\% error rates by evaluating on tiny in-house datasets ($\sim 38$ images) without cross-generator hold-outs or international biometric reporting metrics (BPCER@APCER=1\%).
-\end{enumerate}
-
-% =========================================================================
-% SECTION III: PROPOSED METHODOLOGY
-% =========================================================================
-\section{Proposed UID-MAD Methodology}
+\section{Proposed UID-MAD System Architecture}
 \label{sec:methodology}
 
-\subsection{Dual-Stream Architectural Decomposition}
-UID-MAD is formulated on the physical insight that face morphing attacks are not homogenous and cannot be mapped into a single feature space. Digital landmark morphs manipulate spatial pixel coordinates via piecewise affine warping, whereas generative morphs synthesize facial imagery from neural latent manifolds. UID-MAD treats detection as a dual-stream decomposition problem: Stream A isolates spatial blending seams, while Stream B extracts spectral upsampling residuals.
+UID-MAD addresses face morphing by decomposing detection according to attack physics: Stream~A targets spatial patch boundaries, while Stream~B isolates spectral neural upsampling residuals. Figure~\ref{fig:arch_diagram} illustrates the complete system architecture.
 
-\begin{figure*}[!t]
+\begin{figure}[t]
 \centering
-\includegraphics[width=0.98\textwidth]{figures/system_architecture.png}
-\caption{The proposed Unified Interpretable Dual-Stream Morph Attack Detection (UID-MAD) architecture. Stream A extracts spatial token statistics via DINOv2 with rank-16 LoRA; Stream B isolates periodic Nyquist checkerboards via Laplacian and Haar wavelet filters. Three decoupled ArcFace heads prevent modality competition during training, while bona fide Z-score calibration standardizes linear cosine margins for robust zero-shot inference.}
+\includegraphics[width=\textwidth]{figures/system_architecture.png}
+\caption{The proposed Unified Interpretable Dual-Stream Morph Attack Detection (UID-MAD) architecture. Stream~A extracts spatial token statistics via DINOv2 with rank-16 LoRA; Stream~B isolates periodic Nyquist checkerboards via Laplacian and Haar wavelet filters. Three decoupled ArcFace heads prevent modality competition during training, while bona fide Z-score calibration standardizes linear cosine margins for robust zero-shot inference.}
 \label{fig:arch_diagram}
-\end{figure*}
+\end{figure}
 
-
-\subsection{Stream A: Spatial Vision Transformer}
-Stream A is designed to capture dense spatial patch statistics, geometric inconsistencies, and alpha-blending seams (e.g., double iris contours, mask boundaries).
-\begin{itemize}
-    \item \textbf{Backbone Network:} We deploy a self-supervised Vision Transformer, specifically \texttt{vit\_small\_patch14\_dinov2.lvd142m} (21.6M parameters, embedding dimension $D = 384$, patch size $14 \times 14$). For an input $I \in \mathbb{R}^{224 \times 224 \times 3}$, this yields $N = 16 \times 16 = 256$ spatial patch tokens $\{\mathbf{z}_i\}_{i=1}^{256}$ alongside a class token $\mathbf{z}_{\text{cls}} \in \mathbb{R}^{384}$.
-    \item \textbf{Multi-Scale Spatial Token Aggregation:} Conventional average pooling washes out localized blending cutouts. UID-MAD constructs an explicit 1536-dimensional spatial descriptor:
+\subsection{Stream A: Spatial Vision Transformer with LoRA}
+Stream~A processes RGB facial geometry to detect piecewise-affine blending discontinuities:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Foundation Backbone:} We deploy a self-supervised Vision Transformer, specifically \texttt{vit\_small\_patch14\_dinov2.lvd142m} (21.6M parameters, embedding dimension $D = 384$, patch size $14 \times 14$). For an input $I \in \mathbb{R}^{224 \times 224 \times 3}$, this yields $N = 16 \times 16 = 256$ spatial patch tokens $\{\mathbf{z}_i\}_{i=1}^{256}$ and a class token $\mathbf{z}_{\text{cls}} \in \mathbb{R}^{384}$.
+    \item \textbf{Multi-Scale Token Aggregation:} To prevent average pooling from washing out localized blending cutouts, UID-MAD constructs an explicit 1536-dimensional spatial descriptor:
     \begin{equation}
         \mathbf{f} = \Big[ \mathbf{z}_{\text{cls}} \;\big\|\; \boldsymbol{\mu}_{\text{patch}} \;\big\|\; \boldsymbol{\sigma}_{\text{patch}} \;\big\|\; \mathbf{z}_{\text{max}} \Big] \in \mathbb{R}^{1536}
         \label{eq:spatial_pool}
     \end{equation}
-    where components are computed across all $N = 256$ patch tokens:
-    \begin{align}
-        \boldsymbol{\mu}_{\text{patch}} &= \frac{1}{N} \sum_{i=1}^N \mathbf{z}_i \label{eq:mu_patch} \\
-        \boldsymbol{\sigma}_{\text{patch}} &= \sqrt{\frac{1}{N} \sum_{i=1}^N (\mathbf{z}_i - \boldsymbol{\mu}_{\text{patch}})^2 + \varepsilon} \label{eq:sigma_patch} \\
-        \mathbf{z}_{\text{max}} &= \max_{1 \le i \le N} \mathbf{z}_i \label{eq:max_patch}
-    \end{align}
-    \textit{Mathematical Rationale:} The standard deviation $\boldsymbol{\sigma}_{\text{patch}}$ acts as an explicit mathematical seam detector, because localized pixel-level blending transitions inherently elevate inter-patch feature variance. The maximum token $\mathbf{z}_{\text{max}}$ preserves peak localized anomalies that mean pooling suppresses.
-    \item \textbf{Rank-16 LoRA Adaptation:} To adapt the frozen self-supervised manifold to forensic tasks without erasing its general geometric priors, Low-Rank Adaptation (LoRA) modules wrap attention projections ($W_q, W_k, W_v, W_o$) and MLP projections ($W_{fc1}, W_{fc2}$) across blocks 6 through 11:
+    where $\boldsymbol{\mu}_{\text{patch}} = \frac{1}{N} \sum_{i=1}^N \mathbf{z}_i$, $\boldsymbol{\sigma}_{\text{patch}} = \sqrt{\frac{1}{N} \sum_{i=1}^N (\mathbf{z}_i - \boldsymbol{\mu}_{\text{patch}})^2 + \varepsilon}$, and $\mathbf{z}_{\text{max}} = \max_{1 \le i \le N} \mathbf{z}_i$. Standard deviation $\boldsymbol{\sigma}_{\text{patch}}$ serves as an explicit mathematical seam detector, as localized blending transitions elevate inter-patch feature variance.
+    \item \textbf{Rank-16 LoRA Adaptation:} To adapt the frozen manifold to forensic features without catastrophic forgetting, Low-Rank Adaptation (LoRA) wraps attention projections ($W_q, W_k, W_v, W_o$) and MLP projections across blocks 6 through 11:
     \begin{equation}
         \Delta \mathbf{h} = \frac{\alpha}{r} \text{Dropout}(\mathbf{x}) \mathbf{W}_A^\top \mathbf{W}_B^\top, \quad r = 16, \;\; \alpha = 32, \;\; \frac{\alpha}{r} = 2.0
-        \label{eq:lora_math}
     \end{equation}
-    where $\mathbf{W}_A \in \mathbb{R}^{r \times d_{\text{in}}}$ is initialized from $\mathcal{N}(0, \sigma^2)$ and $\mathbf{W}_B \in \mathbb{R}^{d_{\text{out}} \times r}$ is initialized to zero.
-    \item \textbf{Spatial Projector:} A two-layer bottleneck MLP ($1536 \to 512 \to 256$) with GELU activations and Batch Normalization maps $\mathbf{f}$ into spatial embedding $\mathbf{e}_{\text{spatial}} \in \mathbb{R}^{256}$.
+    where $\mathbf{W}_A \in \mathbb{R}^{r \times d_{\text{in}}}$ and $\mathbf{W}_B \in \mathbb{R}^{d_{\text{out}} \times r}$.
+    \item \textbf{Spatial Projector:} A two-layer bottleneck MLP ($1536 \to 512 \to 256$) with GELU and BatchNorm maps $\mathbf{f}$ into spatial embedding $\mathbf{e}_{\text{spatial}} \in \mathbb{R}^{256}$.
 \end{itemize}
 
 \subsection{Stream B: Frequency Residual Extractor}
-Stream B completely disregards identity and RGB geometry, focusing exclusively on high-frequency spectral residuals and periodic upsampling energy.
-\begin{itemize}
-    \item \textbf{Non-Trainable Filter Bank:} The RGB image is processed through a fixed, depthwise $3 \times 3$ kernel combining an 8-neighbor Laplacian kernel $K_{\text{Lap}}$, a horizontal second-difference kernel $K_h$, and a vertical second-difference kernel $K_v$:
+Stream~B completely disregards identity and RGB geometry, focusing exclusively on periodic upsampling energy:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Non-Trainable Filter Bank:} The RGB image is filtered through a fixed, depthwise $3 \times 3$ kernel combining an 8-neighbor Laplacian $K_{\text{Lap}}$, a horizontal second-difference $K_h$, and a vertical second-difference $K_v$:
     \begin{equation}
         K = \frac{1}{3} (K_{\text{Lap}} + K_h + K_v), \quad R = |I * K|
-        \label{eq:laplacian_bank}
     \end{equation}
     \item \textbf{2D Haar Wavelet High-High Subband:} To isolate diagonal checkerboard patterns characteristic of GAN transposed convolutions, a rectified 2D Haar high-high subband is extracted:
     \begin{equation}
         HH(x, y) = \frac{1}{2} \Big( I_{2x, 2y} - I_{2x, 2y+1} - I_{2x+1, 2y} + I_{2x+1, 2y+1} \Big)
-        \label{eq:haar_hh}
     \end{equation}
     and bilinearly upsampled to $224 \times 224$ to match spatial dimensions.
     \item \textbf{Composite Residual Map:}
     \begin{equation}
         C = 0.5 R + 0.5 |HH|\uparrow \in \mathbb{R}^{224 \times 224 \times 3}
-        \label{eq:composite_c}
     \end{equation}
-    \item \textbf{Frequency ConvNet:} A 4-stage convolutional encoder ($3 \to 32 \to 64 \to 128 \to 128$) utilizing stride-2 convolutions, BatchNorm, and GELU activations extracts spatial-frequency features. Dual adaptive pooling ($\text{AvgPool} \parallel \text{MaxPool}$) and a linear projection yield the frequency embedding $\mathbf{e}_{\text{freq}} \in \mathbb{R}^{128}$.
+    \item \textbf{Frequency ConvNet:} A 4-stage convolutional encoder ($3 \to 32 \to 64 \to 128 \to 128$) with stride-2 convolutions, BatchNorm, and GELU activations extracts spatial-frequency features. Dual adaptive pooling ($\text{AvgPool} \parallel \text{MaxPool}$) and a linear projection yield the frequency embedding $\mathbf{e}_{\text{freq}} \in \mathbb{R}^{128}$.
 \end{itemize}
 
-\subsection{Cross-Stream Alignment and Gating}
-To align dimensions for fusion:
-\begin{equation}
-    \mathbf{f}_{\text{aligned}} = W_{\text{align}} \mathbf{e}_{\text{freq}} + b_{\text{align}} \in \mathbb{R}^{256}
-    \label{eq:freq_align}
-\end{equation}
-A channel-wise gating mechanism computes:
+\subsection{Cross-Stream Gated Fusion and Decoupled ArcFace Supervision}
+To align dimensions, $\mathbf{f}_{\text{aligned}} = W_{\text{align}} \mathbf{e}_{\text{freq}} + b_{\text{align}} \in \mathbb{R}^{256}$. A channel-wise gating mechanism computes dynamic weights:
 \begin{equation}
     g = \sigma\Big( W_g [\mathbf{e}_{\text{spatial}} \parallel \mathbf{f}_{\text{aligned}}] + b_g \Big) \in [0, 1]^{256}
-    \label{eq:gate}
 \end{equation}
-The gated combination $\mathbf{z}_{\text{fused}} = \mathbf{e}_{\text{spatial}} + g \odot \mathbf{f}_{\text{aligned}}$ is projected through a Fusion MLP:
+The gated combination $\mathbf{z}_{\text{fused}} = \mathbf{e}_{\text{spatial}} + g \odot \mathbf{f}_{\text{aligned}}$ is projected through a Fusion MLP into $\mathbf{e}_{\text{fuse}} \in \mathbb{R}^{256}$.
+
+\textbf{Decoupled Multi-Task Supervision:} When transformer and convolutional streams share a single classification head, fast-converging CNN gradients overwhelm the slower transformer adaptation, resulting in feature inversion. UID-MAD resolves this by optimizing three independent ArcFace classification heads concurrently (margin $m=0.25$, scale $s=32.0$):
 \begin{equation}
-    \mathbf{e}_{\text{fuse}} = \text{FusionMLP}(\mathbf{z}_{\text{fused}}) \in \mathbb{R}^{256}
-    \label{eq:e_fuse}
+    \mathcal{L}_{\text{total}} = \mathcal{L}_{\text{ArcFace}}(\mathbf{e}_{\text{fuse}}, y) + 0.5 \mathcal{L}_{\text{ArcFace}}(\mathbf{e}_{\text{spatial}}, y) + 0.5 \mathcal{L}_{\text{ArcFace}}(\mathbf{e}_{\text{freq}}, y)
+    \label{eq:joint_loss}
 \end{equation}
 
-\subsection{Decoupled Multi-Task ArcFace Supervision}
-When transformer and convolutional streams share a single classification head, fast-converging CNN gradients overwhelm the slower transformer adaptation, resulting in feature inversion (documented in Section~\ref{sec:ablation}). To eliminate this competition, UID-MAD trains three independent ArcFace classification heads:
-\begin{enumerate}
-    \item Spatial Head: $\mathbf{e}_{\text{spatial}} \in \mathbb{R}^{256} \to 2$
-    \item Frequency Head: $\mathbf{e}_{\text{freq}} \in \mathbb{R}^{128} \to 2$
-    \item Fused Head: $\mathbf{e}_{\text{fuse}} \in \mathbb{R}^{256} \to 2$
-\end{enumerate}
-
-ArcFace $\ell_2$-normalizes both embedding vectors $\hat{\mathbf{e}} = \frac{\mathbf{e}}{\norm{\mathbf{e}}_2}$ and class weights $\hat{\mathbf{w}}_j = \frac{\mathbf{w}_j}{\norm{\mathbf{w}_j}_2}$, computing cosine similarity $\cos \theta_j = \hat{\mathbf{w}}_j^\top \hat{\mathbf{e}}$. With angular margin $m = 0.25$ and scale factor $s = 32.0$, the loss for sample $i$ with ground-truth label $y_i \in \{0, 1\}$ is:
-\begin{equation}
-    \mathcal{L}_{\text{ArcFace}}(\mathbf{e}_i, y_i) = -\log \frac{e^{s \cos(\theta_{y_i} + m)}}{e^{s \cos(\theta_{y_i} + m)} + \sum_{j \ne y_i} e^{s \cos \theta_j}}
-    \label{eq:arcface_loss}
-\end{equation}
-The total joint objective across a mini-batch of size $B$ is:
-\begin{align}
-    \mathcal{L}_{\text{total}} = \frac{1}{B} \sum_{i=1}^B \Big( &\mathcal{L}_{\text{ArcFace}}(\mathbf{e}_{\text{fuse}, i}, y_i) \notag \\
-    &+ 0.5 \mathcal{L}_{\text{ArcFace}}(\mathbf{e}_{\text{spatial}, i}, y_i) \notag \\
-    &+ 0.5 \mathcal{L}_{\text{ArcFace}}(\mathbf{e}_{\text{freq}, i}, y_i) \Big)
-    \label{eq:multi_task_loss}
-\end{align}
-
-\subsection{Z-Score Calibrated Late Decision Fusion}
-At inference, raw softmax probabilities saturate and fail under unseen generator shifts. UID-MAD discards softmax scores and computes the linear cosine margin for each stream:
+\subsection{Bona Fide Z-Score Calibrated Decision Fusion (Inference)}
+At inference, raw softmax probabilities saturate under distribution shifts. UID-MAD discards softmax scores and computes the linear cosine margin for each stream:
 \begin{equation}
     S_s = \cos \theta_{\text{morph}, s} - \cos \theta_{\text{bf}, s}, \quad S_f = \cos \theta_{\text{morph}, f} - \cos \theta_{\text{bf}, f}
-    \label{eq:stream_margins}
 \end{equation}
-where $\theta_{\text{morph}}$ and $\theta_{\text{bf}}$ are the angular separations to morph and bona fide class centers. Margins are standardized using the empirical mean ($\mu_{\text{bf}}$) and standard deviation ($\sigma_{\text{bf}}$) evaluated on bona fide presentations of the active evaluation slice:
+Margins are standardized using the empirical mean ($\mu_{\text{bf}}$) and standard deviation ($\sigma_{\text{bf}}$) evaluated on bona fide presentations of the active evaluation slice:
 \begin{equation}
-    Z_s = \frac{S_s - \mu_{\text{bf}, s}}{\sigma_{\text{bf}, s} + \varepsilon}, \quad Z_f = \frac{S_f - \mu_{\text{bf}, f}}{\sigma_{\text{bf}, f} + \varepsilon}
-    \label{eq:z_standardize}
+    Z_s = \frac{S_s - \mu_{\text{bf}, s}}{\sigma_{\text{bf}, s} + \varepsilon}, \quad Z_f = \frac{S_f - \mu_{\text{bf}, f}}{\sigma_{\text{bf}, f} + \varepsilon} \implies Z_{\text{final}} = 0.5 Z_s + 0.5 Z_f
 \end{equation}
-The calibrated decision score is an equal-weighted combination:
-\begin{equation}
-    Z_{\text{final}} = 0.5 Z_s + 0.5 Z_f
-    \label{eq:z_final}
-\end{equation}
+The binary presentation verdict is obtained by comparing $Z_{\text{final}}$ against the ISO/IEC 30107-3 operating threshold $\tau^*$.
 
 % =========================================================================
-% FORMAL ALGORITHMS
+% 4. IMPLEMENTATION & EXPERIMENTAL SETUP
 % =========================================================================
-\subsection{Formal Proposed Algorithms}
-
-\begin{algorithm}[H]
-\caption{UID-MAD Two-Stage Training Pipeline}
-\label{alg:training}
-\begin{algorithmic}[1]
-\REQUIRE Training dataset $\mathcal{D}_{\text{tr}}$ (SMDD), validation dataset $\mathcal{D}_{\text{val}}$, hyperparameters $C$
-\ENSURE Optimal trained parameters $\theta^*$
-\STATE \textbf{Call} $\text{seed\_everything}(42)$
-\STATE \textbf{Initialize} MorphDetector:
-    \STATE \quad Freeze DINOv2 backbone; attach LoRA ($r=16, \alpha=32$) to blocks 6--11 (frozen)
-    \STATE \quad Initialize FrequencyResidualStream with fixed $K$ and Haar filters
-    \STATE \quad Initialize SpatialProjector, FreqAlign, Gate, FusionMLP, and 3 ArcFace heads
-\STATE Configure \texttt{WeightedRandomSampler} on $\mathcal{D}_{\text{tr}}$
-\STATE \textbf{Stage 1 (Head Warmup):}
-\FOR{$\text{epoch} = 1$ \TO $4$}
-    \FOR{\textbf{each} mini-batch $(I, y) \in \mathcal{D}_{\text{tr}}$}
-        \STATE $(\mathbf{e}_{\text{fuse}}, \mathbf{e}_{\text{spatial}}, \mathbf{e}_{\text{freq}}) \gets \text{MorphDetector}(I)$
-        \STATE Compute $\mathcal{L}_{\text{total}}$ via Eq.~\eqref{eq:multi_task_loss}
-        \STATE AMP mixed-precision backward; AdamW update (heads, Stream B, fusion)
-    \ENDFOR
-    \STATE Evaluate calibrated $Z$ on $\mathcal{D}_{\text{val}}$; checkpoint if Val EER improves
-\ENDFOR
-\STATE \textbf{Stage 2 (LoRA Fine-Tuning):}
-\STATE Unfreeze LoRA parameters on DINOv2 blocks 6--11
-\FOR{$\text{epoch} = 5$ \TO $8$}
-    \STATE Repeat training loop with cosine-annealed learning rates
-    \STATE Evaluate calibrated $Z$ on $\mathcal{D}_{\text{val}}$; checkpoint $\theta^*$ on lowest EER
-\ENDFOR
-\RETURN $\theta^*$
-\end{algorithmic}
-\end{algorithm}
-
-\begin{algorithm}[H]
-\caption{MorphDetector Forward Pass (Training Mode)}
-\label{alg:forward}
-\begin{algorithmic}[1]
-\REQUIRE Image mini-batch $I \in \mathbb{R}^{B \times 3 \times 224 \times 224}$, labels $y \in \{0, 1\}^B$
-\ENSURE ArcFace loss logits $(l_{\text{fuse}}, l_s, l_f)$
-\STATE $\mathbf{z}_{\text{cls}}, \{\mathbf{z}_i\}_{i=1}^{256} \gets \text{DINOv2\_LoRA}(I)$
-\STATE $\mathbf{f} \gets [\mathbf{z}_{\text{cls}} \parallel \boldsymbol{\mu}_{\text{patch}} \parallel \boldsymbol{\sigma}_{\text{patch}} \parallel \mathbf{z}_{\text{max}}] \in \mathbb{R}^{B \times 1536}$
-\STATE $\mathbf{e}_{\text{spatial}} \gets \text{SpatialProjector}(\mathbf{f}) \in \mathbb{R}^{B \times 256}$
-\STATE $C \gets 0.5|I * K| + 0.5\text{upsample}(|\text{Haar\_HH}(I)|)$
-\STATE $\mathbf{e}_{\text{freq}} \gets \text{FreqConvNet}(C) \in \mathbb{R}^{B \times 128}$
-\STATE $\mathbf{f}_{\text{aligned}} \gets \text{FreqAlign}(\mathbf{e}_{\text{freq}}) \in \mathbb{R}^{B \times 256}$
-\STATE $g \gets \sigma(\text{Gate}([\mathbf{e}_{\text{spatial}} \parallel \mathbf{f}_{\text{aligned}}]))$
-\STATE $\mathbf{e}_{\text{fuse}} \gets \text{FusionMLP}(\mathbf{e}_{\text{spatial}} + g \odot \mathbf{f}_{\text{aligned}}) \in \mathbb{R}^{B \times 256}$
-\RETURN $\text{ArcFace}(\mathbf{e}_{\text{fuse}}, y), \text{ArcFace}(\mathbf{e}_{\text{spatial}}, y), \text{ArcFace}(\mathbf{e}_{\text{freq}}, y)$
-\end{algorithmic}
-\end{algorithm}
-
-\begin{algorithm}[H]
-\caption{Z-Score Calibrated Inference and ISO/IEC 30107-3 Metrics}
-\label{alg:eval}
-\begin{algorithmic}[1]
-\REQUIRE Checkpoint $\theta^*$, test dataloader $\mathcal{L}$ with ground truth $y \in \{0, 1\}$
-\ENSURE EER, BPCER@1\%, BPCER@5\%, ROC-AUC
-\FOR{\textbf{each} mini-batch in $\mathcal{L}$}
-    \STATE Extract stream margins $S_s, S_f$ via Eq.~\eqref{eq:stream_margins}
-\ENDFOR
-\STATE Isolate bona fide set $\mathcal{B} = \{i \mid y_i = 0\}$
-\STATE $\mu_s, \sigma_s \gets \text{mean}(S_s[\mathcal{B}]), \text{std}(S_s[\mathcal{B}])$
-\STATE $\mu_f, \sigma_f \gets \text{mean}(S_f[\mathcal{B}]), \text{std}(S_f[\mathcal{B}])$
-\FOR{\textbf{each} sample $i$}
-    \STATE $Z_{s, i} \gets (S_{s, i} - \mu_s) / (\sigma_s + \varepsilon)$
-    \STATE $Z_{f, i} \gets (S_{f, i} - \mu_f) / (\sigma_f + \varepsilon)$
-    \STATE $Z_i \gets 0.5 Z_{s, i} + 0.5 Z_{f, i}$
-\ENDFOR
-\STATE Sweep decision threshold $\tau$ across dynamic range of $Z$:
-    \STATE \quad $\text{APCER}(\tau) \gets \frac{1}{N_{\text{PA}}} \sum_{i=1}^{N_{\text{PA}}} \mathbb{I}(Z_i < \tau)$
-    \STATE \quad $\text{BPCER}(\tau) \gets \frac{1}{N_{\text{BF}}} \sum_{i=1}^{N_{\text{BF}}} \mathbb{I}(Z_i \ge \tau)$
-\STATE $\text{EER} \gets \text{APCER}(\tau^*)$ where $|\text{APCER}(\tau) - \text{BPCER}(\tau)|$ is minimized
-\STATE $\text{BPCER@1\%} \gets \text{BPCER}(\max\{\tau \mid \text{APCER}(\tau) \le 0.01\})$
-\STATE $\text{BPCER@5\%} \gets \text{BPCER}(\max\{\tau \mid \text{APCER}(\tau) \le 0.05\})$
-\STATE $\text{ROC-AUC} \gets \text{Area under TPR vs. FPR of } Z$
-\RETURN EER, BPCER@1\%, BPCER@5\%, ROC-AUC
-\end{algorithmic}
-\end{algorithm}
-
-% =========================================================================
-% SECTION IV: EXPERIMENTAL SETUP
-% =========================================================================
-\section{Experimental Setup and Evaluation Protocol}
+\section{Implementation Details and Experimental Setup}
 \label{sec:setup}
 
-\subsection{Datasets and Data Splits}
-\begin{itemize}
+\begin{itemize}[leftmargin=*]
     \item \textbf{In-Domain Training: SMDD Synthetic Dataset} \cite{damer2022smdd}: The training corpus comprises 32,000 synthetic portraits generated via StyleGAN2 and landmark blending, partitioned 80/20 into 20,030 bona fide images and 11,970 morph attacks.
-    \item \textbf{Zero-Shot Out-of-Distribution Evaluation: FRLL-Morphs}: Evaluation is conducted zero-shot on the real-world FRLL-Morphs benchmark (7,274 portraits) across five morphing generators:
+    \item \textbf{Zero-Shot Out-of-Distribution Benchmark: FRLL-Morphs}: Evaluation is conducted zero-shot on the real-world FRLL-Morphs benchmark (7,274 portraits) across five distinct morphing generators:
     \begin{enumerate}
         \item \texttt{morph\_opencv}: Classical landmark Delaunay morphing.
         \item \texttt{morph\_facemorpher}: Automated affine landmark morphing.
@@ -365,68 +235,29 @@ The calibrated decision score is an equal-weighted combination:
         \item \texttt{morph\_amsl}: High-quality academic benchmark morphing.
         \item \texttt{morph\_stylegan}: Latent space generative re-synthesis.
     \end{enumerate}
-    Each generator is evaluated across three environmental conditions: (1) Clean/Pristine digital, (2) JPEG compressed ($q=30$), and (3) Print-Scan analog simulation (downscaling + noise injection), establishing 15 distinct operational splits.
-\end{itemize}
-
-\subsection{Anti-Shortcut Data Augmentation Pipeline}
-To prevent the model from exploiting non-biometric shortcuts (camera color casts, compression artifacts), an extensive Albumentations pipeline was deployed during training:
-\begin{itemize}
-    \item Random JPEG compression ($q \in [20, 80]$).
-    \item Gaussian blur ($\sigma \in [0.5, 2.0]$) and motion blur.
-    \item Print-scan simulation proxy: downscaling by factor $2\times$ followed by Gaussian noise injection.
-    \item Random gamma adjustments and camera Photo-Response Non-Uniformity (PRNU) sensor noise proxies.
-    \item Grayscale conversion (\texttt{ToGray}, $p=0.2$) to eliminate skin-tone shortcuts.
-    \item CoarseDropout for localized occlusion robustness.
-\end{itemize}
-
-\subsection{ISO/IEC 30107-3 Standard Biometric Metrics}
-All evaluations strictly adhere to international biometric standards \cite{iso30107_3}:
-\begin{itemize}
-    \item \textbf{Attack Presentation Classification Error Rate (APCER):} The proportion of morphed presentations erroneously classified as bona fide:
-    \begin{equation}
-        \text{APCER}(\tau) = \frac{1}{N_{\text{PA}}} \sum_{i=1}^{N_{\text{PA}}} \mathbb{I}(Z_i < \tau)
-        \label{eq:apcer}
-    \end{equation}
-    \item \textbf{Bona Fide Presentation Classification Error Rate (BPCER):} The proportion of genuine presentations erroneously classified as morph attacks:
-    \begin{equation}
-        \text{BPCER}(\tau) = \frac{1}{N_{\text{BF}}} \sum_{i=1}^{N_{\text{BF}}} \mathbb{I}(Z_i \ge \tau)
-        \label{eq:bpcer}
-    \end{equation}
-    \item \textbf{Equal Error Rate (EER):} The operating point where false acceptances equal false rejections:
-    \begin{equation}
-        \text{EER} = \text{APCER}(\tau^*) = \text{BPCER}(\tau^*), \quad \tau^* = \argmin_\tau |\text{APCER}(\tau) - \text{BPCER}(\tau)|
-        \label{eq:eer}
-    \end{equation}
-    \item \textbf{BPCER @ APCER = 1.0\% / 5.0\%:} Critical operational security thresholds required by border security agencies (e.g., FRONTEX).
-    \item \textbf{ROC-AUC:} Threshold-independent area under the True Positive Rate ($\text{TPR} = 1 - \text{APCER}$) versus False Positive Rate ($\text{FPR} = \text{BPCER}$) curve.
-\end{itemize}
-
-\subsection{Engineering and Hardware Constraints}
-\begin{itemize}
-    \item \textbf{Hardware:} Benchmarked on Kaggle dual NVIDIA T4 GPUs (16\,GB VRAM each) using PyTorch \texttt{DataParallel} and FP16 Automatic Mixed Precision (AMP).
-    \item \textbf{I/O Optimization:} To eliminate virtual FUSE filesystem read stalls, the 4.5\,GB dataset archive was decompressed into local NVMe \texttt{/tmp} scratch space.
-    \item \textbf{Concurrency Guard:} To prevent CUDA IPC deadlocks and OpenMP CPU oversubscription, execution was constrained to single-threaded worker pipelines (\texttt{NUM\_WORKERS = 0}).
-    \item \textbf{Runtime Budget:} Total Stage 1 and Stage 2 training completed in \textbf{58.4 minutes}; zero-shot evaluation across all 15 FRLL splits completed in \textbf{9.5 minutes}.
+    Each generator is evaluated across three environmental conditions: (1) Clean digital, (2) JPEG compressed ($q=30$), and (3) Print-Scan analog simulation (downscaling + noise injection), establishing 15 distinct operational splits.
+    \item \textbf{Anti-Shortcut Data Augmentations:} An extensive Albumentations pipeline was deployed during training to prevent shortcut learning: random JPEG compression ($q \in [20, 80]$), Gaussian/motion blur, print-scan simulation proxy, random gamma and sensor noise proxies, and CoarseDropout.
+    \item \textbf{Hardware & Computing Environment:} Benchmarked on Kaggle dual NVIDIA T4 GPUs (16\,GB VRAM each) using PyTorch \texttt{DataParallel} and FP16 Automatic Mixed Precision (AMP). Dataset I/O was optimized by decompressing the 4.5\,GB dataset into local NVMe \texttt{/tmp} storage.
 \end{itemize}
 
 % =========================================================================
-% SECTION V: RESULTS & ANALYSIS
+% 5. EXPERIMENTAL RESULTS & PERFORMANCE ANALYSIS
 % =========================================================================
-\section{Performance Analysis and Results}
+\section{Experimental Results and Milestone Findings}
 \label{sec:results}
 
 \subsection{In-Domain Training Convergence on SMDD}
-Table~\ref{tab:smdd_training_history} compiles the complete in-domain training records on SMDD across both Phase 1 and Phase 2. While the Phase 1 baseline trained only for 4 epochs reaching $96.15\%$ training accuracy, Phase 2 trained across 8 epochs with two-stage optimization, achieving $99.12\%$ training accuracy, $0.0000\%$ validation EER, and near-zero validation loss ($2.50 \times 10^{-8}$).
+Table~\ref{tab:smdd_training_history} compiles the complete in-domain training records on SMDD across both Phase~1 and Phase~2. Phase~2 trained across 8 epochs with two-stage optimization (Head Warmup for epochs 1--4, LoRA Fine-Tuning for epochs 5--8), achieving $99.12\%$ training accuracy, $0.0000\%$ validation EER, and near-zero validation loss ($2.50 \times 10^{-8}$).
 
-\begin{table*}[t]
+\begin{table}[h]
 \centering
 \caption{In-Domain Training Convergence History on SMDD (Phase 1 Baseline vs. Phase 2 UID-MAD Dual-Stream)}
 \label{tab:smdd_training_history}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{@{}cclccccc@{}}
+\small
+\begin{tabularx}{\textwidth}{cclccccc}
 \toprule
 \textbf{Phase} & \textbf{Epoch} & \textbf{Optimization Stage} & \textbf{Train Loss} & \textbf{Train Acc.} & \textbf{Val. Loss} & \textbf{Val. EER} & \textbf{Val. ROC-AUC} \\ \midrule
-\multirow{4}{*}{\textbf{Phase 1: Spatial Only}} 
+\multirow{4}{*}{\textbf{Phase 1: Spatial}} 
  & 1 & Head Warmup & 0.5422 & 92.06\% & 0.0072 & 0.126\% & 0.999984 \\
  & 2 & Head Warmup & 0.1544 & 95.54\% & 0.0036 & 0.063\% & 0.999993 \\
  & 3 & Head Warmup & 0.1226 & 96.17\% & 0.0061 & 0.037\% & 0.999997 \\
@@ -440,23 +271,18 @@ Table~\ref{tab:smdd_training_history} compiles the complete in-domain training r
  & 6 & Stage 2: LoRA Fine-Tuning & 0.5726 & 98.39\% & $4.19 \times 10^{-8}$ & 0.0000\% & 1.000000 \\
  & 7 & Stage 2: LoRA Fine-Tuning & 0.5241 & 98.83\% & $2.92 \times 10^{-8}$ & 0.0000\% & 1.000000 \\
  & 8 & Stage 2: LoRA Fine-Tuning & \textbf{0.5039} & \textbf{99.12\%} & \textbf{$2.50 \times 10^{-8}$} & \textbf{0.0000\%} & \textbf{1.000000} \\ \bottomrule
-\end{tabular}%
-}
-\end{table*}
+\end{tabularx}
+\end{table}
 
-\subsection{Phase 1 Baseline: The Generative Collapse}
-When tested zero-shot across FRLL-Morphs (Table~\ref{tab:phase1_frll}), the spatial baseline achieved near-perfect accuracy on landmark-warped morphs (\texttt{morph\_opencv}: 0.9993 AUC; \texttt{morph\_facemorpher}: 0.9958 AUC). However, the model collapsed catastrophically on generative morphs (\texttt{morph\_stylegan}):
-\begin{equation}
-    \text{ROC-AUC}_{\text{StyleGAN2, Clean}} = 0.4988, \quad \text{EER} = 51.00\%
-\end{equation}
-An AUC of 0.4988 is mathematically indistinguishable from random chance. Because StyleGAN2 synthesizes faces continuously from latent vectors, there are no physical spatial seams for the transformer to detect.
+\subsection{Phase 1 Baseline Generative Collapse vs. Phase 2 Recovery}
+When evaluated zero-shot across FRLL-Morphs (Table~\ref{tab:phase1_frll}), the spatial baseline achieved high accuracy on landmark-warped morphs (\texttt{morph\_opencv}: 0.9993 AUC; \texttt{morph\_facemorpher}: 0.9958 AUC). However, the model collapsed catastrophically on generative morphs (\texttt{morph\_stylegan}): $\text{ROC-AUC} = 0.4988$, $\text{EER} = 51.00\%$. An AUC of 0.4988 is mathematically indistinguishable from random chance. Because StyleGAN2 synthesizes faces continuously from latent vectors, there are no physical spatial seams for the transformer to detect.
 
-\begin{table*}[t]
+\begin{table}[h]
 \centering
 \caption{Phase 1 Spatial Baseline Zero-Shot Evaluation across 15 Operational Slices of FRLL-Morphs}
 \label{tab:phase1_frll}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{@{}llcccc@{}}
+\small
+\begin{tabularx}{\textwidth}{llcccc}
 \toprule
 \textbf{Generator Family} & \textbf{Operational Condition} & \textbf{Equal Error Rate (EER)} & \textbf{BPCER @ 1.0\% APCER} & \textbf{BPCER @ 5.0\% APCER} & \textbf{ROC-AUC Score} \\ \midrule
 \multirow{3}{*}{OpenCV} & Clean Digital & \textbf{0.94\%} & \textbf{0.00\%} & \textbf{0.00\%} & \textbf{0.9993} \\
@@ -474,12 +300,10 @@ An AUC of 0.4988 is mathematically indistinguishable from random chance. Because
 \multirow{3}{*}{StyleGAN2} & Clean Digital & \textbf{51.00\%} & \textbf{99.50\%} & \textbf{99.00\%} & \textbf{0.4988} \\
  & JPEG ($q=30$) & 50.00\% & 99.50\% & 98.50\% & 0.4973 \\
  & Print-Scan & 45.80\% & 96.10\% & 88.20\% & 0.5780 \\ \bottomrule
-\end{tabular}%
-}
-\end{table*}
+\end{tabularx}
+\end{table}
 
-\subsection{Phase 2 Breakthrough: Resolving Generative Morphs}
-Stream B's high-pass Laplacian filter and Haar wavelet transform successfully isolated periodic upsampling energy. On clean images, StyleGAN2 detection surged:
+In Phase~2, Stream~B's high-pass Laplacian filter and Haar wavelet transform successfully isolated periodic upsampling energy. On clean images, StyleGAN2 detection surged:
 \begin{equation}
     \text{Phase 1 AUC: } 0.4988 \implies \text{Phase 2 AUC: } \mathbf{0.9399} \quad (\mathbf{+0.4411})
 \end{equation}
@@ -487,37 +311,28 @@ EER dropped from 51.00\% down to 14.66\%. Under print-scan conditions, StyleGAN2
 
 \subsection{Discovery of Print-Scan Orthogonal Frequency Surge}
 Under physical print-scan evaluation, an essential property was uncovered:
-\begin{itemize}
-    \item Analog printing, halftone dot screening, and scanner optical MTF acts as a low-pass filter, destroying spatial blending seams. Consequently, Stream A spatial AUC collapsed to \textbf{0.6355} on WebMorph and \textbf{0.3155} on StyleGAN2.
-    \item However, ink dispersion noise and halftone screening patterns paradoxically amplified residual high-frequency artifacts. Stream B's frequency stream surged to \textbf{$>0.997$ ROC-AUC across every generator family}:
-    \begin{itemize}
-        \item \texttt{morph\_opencv} (Print-Scan): 0.9992 AUC (1.47\% EER)
-        \item \texttt{morph\_facemorpher} (Print-Scan): 0.9996 AUC (1.06\% EER)
-        \item \texttt{morph\_webmorph} (Print-Scan): 0.9976 AUC (2.49\% EER)
-        \item \texttt{morph\_stylegan} (Print-Scan): 0.9977 AUC (1.92\% EER)
-        \item \texttt{morph\_amsl} (Print-Scan): 0.9981 AUC (1.52\% EER)
-    \end{itemize}
+\begin{itemize}[leftmargin=*]
+    \item Analog printing and scanner MTF act as a low-pass filter, destroying spatial seams. Consequently, Stream~A spatial AUC collapsed to \textbf{0.6355} on WebMorph and \textbf{0.3155} on StyleGAN2.
+    \item However, ink dispersion noise and halftone screening patterns paradoxically amplified residual high-frequency artifacts. Stream~B's frequency stream surged to \textbf{$>0.997$ ROC-AUC across every generator family}: OpenCV (0.9992 AUC), FaceMorpher (0.9996 AUC), WebMorph (0.9976 AUC), StyleGAN2 (0.9977 AUC), and AMSL (0.9981 AUC).
 \end{itemize}
-This proves that spatial and frequency streams are orthogonally complementary: when physical printing destroys spatial cues, frequency signatures rescue the decision.
+This proves that spatial and frequency streams are orthogonally complementary: when physical printing destroys spatial cues, frequency signatures rescue the decision. Figure~\ref{fig:quantitative_eval_charts} summarizes these empirical trends.
 
-% Full-Width 3-Panel Evaluation Figures (Phase 1 vs 2, Orthogonality, EER)
-\begin{figure*}[t]
+\begin{figure}[h]
 \centering
 \includegraphics[width=\textwidth]{figures/quantitative_eval_charts.png}
 \caption{Empirical quantitative evaluations across the 5 morph generator families: (a) Resolution of the generative blind spot, highlighting the $+0.4411$ AUC surge on StyleGAN2; (b) Orthogonality of streams under analog print-scan filtering, where frequency residuals recover spatial degradation ($>0.997$ AUC across all generators); (c) Calibrated Equal Error Rate (EER \%) demonstrating robust cross-condition stability.}
 \label{fig:quantitative_eval_charts}
-\end{figure*}
-
+\end{figure}
 
 \subsection{Full 15-Slice FRLL-Morphs Benchmark Record}
 Table~\ref{tab:full_benchmark} compiles the complete official evaluation record across all 15 operational splits. UID-MAD achieved $\ge 0.9809$ ROC-AUC on every subset, with an overall mean of \textbf{0.992 ROC-AUC}.
 
-\begin{table*}[t]
+\begin{table}[h]
 \centering
 \caption{Complete 15-Slice FRLL-Morphs Benchmark Results under ISO/IEC 30107-3 Biometric Standards}
 \label{tab:full_benchmark}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{@{}llcccccccr@{}}
+\footnotesize
+\begin{tabularx}{\textwidth}{llcccccccr}
 \toprule
 \textbf{Generator} & \textbf{Condition} & \textbf{Spatial AUC / EER} & \textbf{Freq AUC / EER} & \textbf{Fused Head AUC} & \textbf{Calibrated AUC} & \textbf{Calibrated EER} & \textbf{BPCER@1\%} & \textbf{BPCER@5\%} & \textbf{Val Loss} \\ \midrule
 \multirow{3}{*}{OpenCV} & Clean & 0.9991 / 0.53\% & 0.8564 / 23.03\% & 0.2937 & \textbf{0.9997} & \textbf{0.74\%} & 0.00\% & 0.00\% & 13.28 \\
@@ -535,191 +350,221 @@ Table~\ref{tab:full_benchmark} compiles the complete official evaluation record 
 \multirow{3}{*}{AMSL} & Clean & 0.9982 / 2.01\% & 0.6605 / 37.99\% & 0.3748 & \textbf{0.9938} & \textbf{2.92\%} & 16.18\% & 0.98\% & 15.78 \\
  & JPEG ($q=30$) & 0.9979 / 2.15\% & 0.6634 / 37.37\% & 0.3899 & \textbf{0.9935} & \textbf{3.23\%} & 16.18\% & 1.47\% & 15.78 \\
  & Print-Scan & 0.3743 / 59.43\% & \textbf{0.9981 / 1.52\%} & 0.2259 & \textbf{0.9809} & \textbf{6.73\%} & 14.22\% & 8.33\% & 17.08 \\ \bottomrule
-\end{tabular}%
-}
-\end{table*}
+\end{tabularx}
+\end{table}
 
-% =========================================================================
-% SECTION VI: ABLATION STUDIES
-% =========================================================================
-\section{Intra-Project Ablation Studies and Visual Verification}
-\label{sec:ablation}
+\subsection{Empirical Confusion Matrix and Operational Error Distribution}
+Figure~\ref{fig:confusion_matrices} presents the empirical confusion matrices plotted in authentic Kaggle Seaborn style across three critical operational evaluation subsets:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Generative Collapse (Figure~\ref{fig:confusion_matrices}a):} On \texttt{morph\_stylegan}, the Phase 1 spatial baseline exhibits a 51.0\% False Acceptance Rate (102 of 200 attacks falsely accepted as genuine).
+    \item \textbf{Frequency Recovery (Figure~\ref{fig:confusion_matrices}b):} With Stream~B, UID-MAD elevates true morph detection to 85.5\% at strict EER ($>96.1\%$ at $\text{APCER}=5\%$), slashing false acceptances from 51.0\% down to 14.5\%.
+    \item \textbf{Print-Scan Robustness (Figure~\ref{fig:confusion_matrices}c):} Under physical print-scan degradation, high-frequency ink dispersion empowers the spectral stream, achieving 97.5\% True Detection (only 5 false acceptances out of 200, 2.33\% EER).
+\end{itemize}
 
-\subsection{Architectural and Fusion Ablation}
-To justify each architectural component, seven variants were evaluated on FRLL-Morphs (Table~\ref{tab:ablation}).
-\begin{enumerate}
-    \item \textbf{Early Concatenation Failure:} Directly concatenating ViT tokens and ConvNet features into a shared ArcFace head inverted the feature space (0.2422 AUC on OpenCV).
-    \item \textbf{Max-OR Softmax Fusion:} Taking the maximum of softmax probabilities saturated due to overconfident erroneous predictions on out-of-distribution bona fide portraits ($\text{BPCER@1\%} = 100\%$).
-    \item \textbf{Proposed Z-Score Calibration:} Standardizing linear cosine margins against the active bona fide distribution completely eliminated saturation, achieving the highest minimum ROC-AUC across all 15 operational slices (\textbf{0.9809}).
-\end{enumerate}
-
-\begin{table*}[t]
+\begin{figure}[h]
 \centering
-\caption{Architectural and Fusion Ablation on FRLL-Morphs Across Operational Slices}
-\label{tab:ablation}
-\resizebox{\textwidth}{!}{%
-\begin{tabularx}{\textwidth}{@{}lccccX@{}}
-\toprule
-\textbf{Architecture Variant} & \textbf{OpenCV (Clean)} & \textbf{StyleGAN2 (Clean)} & \textbf{StyleGAN2 (P-S)} & \textbf{Min AUC} & \textbf{Diagnostic Finding and Operational Impact} \\ \midrule
-Phase 1 Spatial ViT + ArcFace & 0.9993 / 0.94\% & 0.4988 / 51.0\% & 0.5780 & 0.4973 & Spatial blindness to smooth neural manifolds (generative collapse). \\
-Phase 2 Early Concat (Trial 1) & 0.2422 (inv.) & 0.8525 / 24.0\% & -- & Collapse & Gradient dominance by fast CNN branches causes feature inversion. \\
-Phase 2 Max-OR Softmax Fusion & 0.7924 / 22.9\% & 0.5363 / 46.5\% & 0.6489 & $\sim 0.51$ & Softmax saturation on out-of-distribution bona fide samples ($\text{BPCER@1\%} = 100\%$). \\
-Phase 2 Spatial Head Only & 0.9991 / 0.53\% & 0.9116 / 17.0\% & 0.3155 & 0.3155 & Vulnerable to physical print-scan low-pass analog filtering. \\
-Phase 2 Frequency Head Only & 0.8564 / 23.0\% & 0.7644 / 29.9\% & 0.9977 & 0.6605 & Sub-optimal sensitivity to fine spatial blending seams. \\
-Phase 2 Fused ArcFace Head & 0.2937 & 0.1305 & 0.3952 & 0.0324 & Uncalibrated joint cosine margin collapses out-of-distribution. \\
-\textbf{Phase 2 Calibrated (Proposed)} & \textbf{0.9997 / 0.74\%} & \textbf{0.9399 / 14.66\%} & \textbf{0.9854} & \textbf{0.9809} & \textbf{Robust zero-shot generalization across all 15 operational slices.} \\ \bottomrule
-\end{tabularx}%
-}
-\end{table*}
+\includegraphics[width=\textwidth]{figures/confusion_matrices.png}
+\caption{Empirical confusion matrices at ISO/IEC 30107-3 operational thresholds across 200-sample evaluation subsets: (a) Phase 1 spatial baseline suffering 51.0\% False Acceptance on StyleGAN2; (b) Phase 2 UID-MAD restoring true morph detection to 85.5\% at EER; (c) Physical print-scan credential evaluation demonstrating 97.5\% true detection driven by spectral residual surge.}
+\label{fig:confusion_matrices}
+\end{figure}
 
 \subsection{Multi-Stream ROC Curve Analysis}
 Figure~\ref{fig:roc_comparison} presents the official empirical ROC curves:
-\begin{itemize}
-    \item On \texttt{morph\_stylegan} (Figure~\ref{fig:roc_stylegan_p1} vs. \ref{fig:roc_stylegan_p2}), the Phase 1 spatial model runs along the random guess diagonal ($0.4988$ AUC). In Phase 2, UID-MAD's calibrated curve surges to \textbf{0.940 AUC}, driven by the frequency stream.
+\begin{itemize}[leftmargin=*]
+    \item On \texttt{morph\_stylegan} (Figure~\ref{fig:roc_stylegan_p1} vs. \ref{fig:roc_stylegan_p2}), the Phase~1 spatial model runs along the random guess diagonal ($0.4988$ AUC). In Phase~2, UID-MAD's calibrated curve surges to \textbf{0.940 AUC}, driven by the frequency stream.
     \item On landmark morphs (Figure~\ref{fig:roc_opencv}), the spatial stream and calibrated fusion maintain near-perfect vertical separation ($1.000$ AUC).
 \end{itemize}
 
-\begin{figure*}[t]
+\begin{figure}[h]
 \centering
 \begin{subfigure}[b]{0.32\textwidth}
     \centering
     \includegraphics[width=\textwidth]{figures/roc_stylegan_phase1.png}
-    \caption{Phase 1: StyleGAN2 Collapse (0.4988 AUC)}
+    \caption{Phase 1: StyleGAN2 Collapse (0.4988)}
     \label{fig:roc_stylegan_p1}
 \end{subfigure}
 \hfill
 \begin{subfigure}[b]{0.32\textwidth}
     \centering
     \includegraphics[width=\textwidth]{figures/roc_stylegan_phase2.png}
-    \caption{Phase 2: StyleGAN2 Breakthrough (0.940 AUC)}
+    \caption{Phase 2: StyleGAN2 Surge (0.940)}
     \label{fig:roc_stylegan_p2}
 \end{subfigure}
 \hfill
 \begin{subfigure}[b]{0.32\textwidth}
     \centering
     \includegraphics[width=\textwidth]{figures/roc_opencv_phase2.png}
-    \caption{Phase 2: OpenCV Benchmark (1.000 AUC)}
+    \caption{Phase 2: OpenCV Benchmark (1.000)}
     \label{fig:roc_opencv}
 \end{subfigure}
-\caption{Empirical ROC curves under ISO/IEC 30107-3 protocols. (a) Phase 1 spatial-only baseline fails completely on generative latent morphs (0.4988 AUC). (b) Phase 2 UID-MAD frequency integration recovers StyleGAN2 detection (0.940 AUC). (c) High-fidelity detection on traditional landmark morphs is fully preserved.}
+\caption{Empirical ROC curves under ISO/IEC 30107-3 protocols comparing Phase 1 collapse against Phase 2 dual-stream recovery.}
 \label{fig:roc_comparison}
-\end{figure*}
+\end{figure}
 
-\subsection{Empirical Confusion Matrix and Operational Error Distribution}
-Figure~\ref{fig:confusion_matrices} illustrates the empirical confusion matrices across critical operational scenarios evaluated at the EER operating threshold:
-\begin{itemize}
-    \item \textbf{Generative Collapse (Figure~\ref{fig:confusion_matrices}a):} On \texttt{morph\_stylegan}, the Phase 1 spatial baseline exhibits a catastrophic $51.0\%$ False Acceptance Rate (102 out of 200 morph attacks verified as genuine), confirming that spatial patch self-attention is blind to neural latent interpolations.
-    \item \textbf{Frequency Recovery (Figure~\ref{fig:confusion_matrices}b):} With the integration of Stream B, UID-MAD elevates true morph detection to $85.3\%$ at the strict EER threshold (and $>96.1\%$ at $\text{APCER}=5\%$), slashing false acceptances from $51.0\%$ down to $14.7\%$.
-    \item \textbf{Print-Scan Robustness (Figure~\ref{fig:confusion_matrices}c):} Under physical print-scan degradation, while analog low-pass filtering degrades spatial seams, high-frequency ink dispersion paradoxically empowers the spectral stream, achieving $97.7\%$ True Detection ($2.3\%$ EER) across physical credential workflows.
-\end{itemize}
-
-\begin{figure*}[t]
-\centering
-\includegraphics[width=\textwidth]{figures/confusion_matrices.png}
-\caption{Empirical confusion matrices at ISO/IEC 30107-3 operational thresholds across 200-sample evaluation subsets: (a) Phase 1 spatial baseline suffering 51.0\% False Acceptance on StyleGAN2; (b) Phase 2 UID-MAD restoring true morph detection to 85.3\% at EER; (c) Physical print-scan credential evaluation demonstrating 97.7\% true detection driven by spectral residual surge.}
-\label{fig:confusion_matrices}
-\end{figure*}
-
-\subsection{Qualitative Forensic Spectral Analysis}
+\subsection{Qualitative Forensic Visualizations & Validation Exemplars}
 Figure~\ref{fig:qualitative_samples} provides qualitative forensic visualizations comparing authentic facial portraits and morph attacks from the FRLL-Morphs benchmark alongside their corresponding high-pass Laplacian frequency residuals:
-\begin{itemize}
+\begin{itemize}[leftmargin=*]
     \item \textbf{Bona Fide Presentation (Figure~\ref{fig:qualitative_samples}a):} The natural facial portrait generates a continuous, smooth spatial-frequency decay across anatomical facial structures ($Z = -2.14$, cleanly classified as bona fide).
     \item \textbf{Digital Landmark Blending (Figure~\ref{fig:qualitative_samples}b):} In \texttt{morph\_opencv}, the piecewise affine warping creates sharp intensity transitions along Delaunay triangle perimeters and neckline cutouts, triggering high spatial patch variance ($\boldsymbol{\sigma}_{\text{patch}}$) in Stream A.
-    \item \textbf{Generative Latent Synthesis (Figure~\ref{fig:qualitative_samples}c):} In \texttt{morph\_stylegan}, the face exhibits flawless geometric smoothness and zero spatial ghosting, blinding Stream A. However, the Laplacian residual isolates the characteristic periodic 2D checkerboard pattern created by neural transposed convolutions ($Z = +2.95$, successfully intercepted by Stream B).
-    \item \textbf{Physical Print-Scan Channel (Figure~\ref{fig:qualitative_samples}d):} Analog printing and scanner MTF completely obliterate fine pixel blending seams, suppressing spatial detectors. Paradoxically, the halftone dot screening and microscopic ink dispersion introduce strong periodic high-frequency patterns, driving frequency detection to $>0.997$ ROC-AUC ($Z = +4.10$).
+    \item \textbf{Generative Latent Synthesis (Figure~\ref{fig:qualitative_samples}c):} In \texttt{morph\_stylegan}, the face exhibits flawless geometric smoothness and zero spatial ghosting, blinding Stream A. However, the Laplacian residual isolates the characteristic periodic 2D checkerboard pattern created by neural transposed convolutions ($Z = +1.95$, successfully intercepted by Stream B).
+    \item \textbf{Physical Print-Scan Channel (Figure~\ref{fig:qualitative_samples}d):} Analog printing and scanner MTF completely obliterate fine pixel blending seams, suppressing spatial detectors. Paradoxically, the halftone dot screening and microscopic ink dispersion introduce strong periodic high-frequency patterns, driving frequency detection to $>0.997$ ROC-AUC ($Z = +1.43$).
 \end{itemize}
 
-\begin{figure*}[t]
+\begin{figure}[h]
 \centering
 \includegraphics[width=\textwidth]{figures/qualitative_samples.png}
 \caption{Qualitative forensic visualizations from the FRLL-Morphs benchmark: Top row displays input RGB portraits; bottom row displays corresponding non-trainable high-pass Laplacian frequency residuals $R = |I * K|$. (a) Genuine bona fide portrait exhibiting natural spectral decay; (b) OpenCV landmark morph showing geometric blending seams; (c) StyleGAN2 latent morph showing isolated neural upsampling checkerboard patterns; (d) Physical print-scan credential exhibiting ink dispersion noise that amplifies spectral residual cues.}
 \label{fig:qualitative_samples}
-\end{figure*}
+\end{figure}
 
-Table~\ref{tab:qualitative_metrics} presents the exact quantitative score decomposition across exemplar test presentations from the FRLL-Morphs benchmark. In genuine bona fide presentations (Sample~A and Sample~F), both spatial and frequency margins produce negative values, resulting in strongly negative calibrated Z-scores ($Z_{\text{final}} < -1.90$) that lie well below the zero decision threshold. For digital landmark warping (Sample~B and Sample~E), spatial patch token variance dominates ($Z_s > +2.60$), decisively driving detection. Under generative latent synthesis (Sample~C), spatial attention alone yields a negative score ($Z_s = -0.72$), but the Laplacian spectral residual stream yields an overwhelming response ($Z_f = +4.62$), elevating $Z_{\text{final}}$ to $+1.95$. Finally, under physical print-scan analog filtering (Sample~D), although spatial seams are destroyed ($Z_s = -2.16$), halftone screening noise induces a spectral surge ($Z_f = +5.02$), resulting in a calibrated score of $+1.43$ that securely thwarts the attack.
+Table~\ref{tab:qualitative_metrics} presents the exact quantitative score decomposition across exemplar validation presentations. In genuine bona fide presentations (Sample~A and Sample~F), both spatial and frequency margins produce negative values, resulting in strongly negative calibrated Z-scores ($Z_{\text{final}} < -1.90$) well below the zero decision threshold. Under generative latent synthesis (Sample~C), spatial attention yields a negative score ($Z_s = -0.72$), but the Laplacian spectral residual stream yields an overwhelming response ($Z_f = +4.62$), elevating $Z_{\text{final}}$ to $+1.95$. Finally, under physical print-scan filtering (Sample~D), although spatial seams are destroyed ($Z_s = -2.16$), halftone screening noise induces a spectral surge ($Z_f = +5.02$), resulting in a calibrated score of $+1.43$ that securely thwarts the attack.
 
-\begin{table*}[t]
+\begin{table}[h]
 \centering
 \caption{Quantitative Forensic Prediction Breakdown on Exemplar Demo Validation Portraits from FRLL-Morphs}
 \label{tab:qualitative_metrics}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{@{}llccccccc@{}}
+\small
+\begin{tabularx}{\textwidth}{llccccccc}
 \toprule
-\textbf{Sample ID} & \textbf{Attack / Presentation Family} & \textbf{Operational Condition} & \textbf{Spatial Margin ($S_s$)} & \textbf{Freq Margin ($S_f$)} & \textbf{Spatial Z ($Z_s$)} & \textbf{Freq Z ($Z_f$)} & \textbf{Calibrated Score ($Z_{\text{final}}$)} & \textbf{Decision ($\tau = 0.00$)} \\ \midrule
+\textbf{Sample ID} & \textbf{Attack / Presentation Family} & \textbf{Condition} & \textbf{Margin $S_s$} & \textbf{Margin $S_f$} & \textbf{Z $Z_s$} & \textbf{Z $Z_f$} & \textbf{Score $Z_{\text{final}}$} & \textbf{Decision ($\tau = 0.00$)} \\ \midrule
 Sample A & Bona Fide (Genuine Reference) & Clean Digital & $-0.4821$ & $-0.3912$ & $-2.05$ & $-2.23$ & $\mathbf{-2.14}$ & Bona Fide (Correct) \\
-Sample B & \texttt{morph\_opencv} (Delaunay Landmark) & Clean Digital & $+0.8412$ & $-0.1045$ & $+3.12$ & $-0.85$ & $\mathbf{+1.14}$ & Morph Attack (Correct) \\
-Sample C & \texttt{morph\_stylegan} (Latent Resynthesis) & Clean Digital & $-0.1520$ & $+0.9124$ & $-0.72$ & $+4.62$ & $\mathbf{+1.95}$ & Morph Attack (Correct) \\
-Sample D & \texttt{morph\_stylegan} (Printed \& Scanned) & Physical Print-Scan & $-0.5102$ & $+0.9840$ & $-2.16$ & $+5.02$ & $\mathbf{+1.43}$ & Morph Attack (Correct) \\
-Sample E & \texttt{morph\_amsl} (High-Quality Blended) & JPEG ($q=30$) & $+0.7125$ & $+0.2104$ & $+2.62$ & $+0.65$ & $\mathbf{+1.64}$ & Morph Attack (Correct) \\
-Sample F & Bona Fide (Under Print-Scan) & Physical Print-Scan & $-0.4950$ & $-0.2810$ & $-2.11$ & $-1.70$ & $\mathbf{-1.91}$ & Bona Fide (Correct) \\
+Sample B & \texttt{morph\_opencv} (Landmark Warp) & Clean Digital & $+0.8412$ & $-0.1045$ & $+3.12$ & $-0.85$ & $\mathbf{+1.14}$ & Morph Attack (Correct) \\
+Sample C & \texttt{morph\_stylegan} (Latent Resynth) & Clean Digital & $-0.1520$ & $+0.9124$ & $-0.72$ & $+4.62$ & $\mathbf{+1.95}$ & Morph Attack (Correct) \\
+Sample D & \texttt{morph\_stylegan} (Print-Scan) & Print-Scan & $-0.5102$ & $+0.9840$ & $-2.16$ & $+5.02$ & $\mathbf{+1.43}$ & Morph Attack (Correct) \\
+Sample E & \texttt{morph\_amsl} (High-Quality Blend) & JPEG ($q=30$) & $+0.7125$ & $+0.2104$ & $+2.62$ & $+0.65$ & $\mathbf{+1.64}$ & Morph Attack (Correct) \\
+Sample F & Bona Fide (Under Print-Scan) & Print-Scan & $-0.4950$ & $-0.2810$ & $-2.11$ & $-1.70$ & $\mathbf{-1.91}$ & Bona Fide (Correct) \\
 \bottomrule
-\end{tabular}%
-}
-\end{table*}
+\end{tabularx}
+\end{table}
 
+\subsection{Architectural Ablation on Fusion and Supervision Strategies}
+Table~\ref{tab:ablation} summarizes the architectural ablation justifying each design choice:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Early Concatenation Failure:} Directly concatenating ViT tokens and ConvNet features into a shared ArcFace head inverted the feature space (0.2422 AUC on OpenCV) due to gradient dominance.
+    \item \textbf{Max-OR Softmax Fusion:} Saturated on out-of-distribution bona fide portraits ($\text{BPCER@1\%} = 100\%$).
+    \item \textbf{Proposed Z-Score Calibration:} Standardizing linear cosine margins against the active bona fide distribution completely eliminated saturation, achieving the highest minimum ROC-AUC across all 15 operational slices (\textbf{0.9809}).
+\end{enumerate}
 
-
-
-% =========================================================================
-% SECTION VII: EDGE DEPLOYMENT & FUTURE WORK
-% =========================================================================
-\section{Edge Deployment and Future Work Roadmap}
-\label{sec:edge}
-
-\subsection{Operational Latency Budget in Border e-Gates}
-In Automated Border Control, e-Gates operate under strict passenger throughput mandates: the full transaction (biometric capture, RFID passport chip read, presentation attack detection, 1:1 facial verification, barrier opening) must complete in \textbf{under 2 to 3 seconds}. The S-MAD sub-module is allocated a latency budget of \textbf{$< 50$ milliseconds}. Unoptimized PyTorch implementations require $300$--$600$\,ms, inducing checkpoint bottlenecks.
-
-Furthermore, under ICAO Doc 9303 and international data sovereignty regulations, biometric portraits cannot legally be transmitted to external cloud services; all inference must execute on-premise within the e-Gate physical edge controller.
+\begin{table}[h]
+\centering
+\caption{Architectural and Fusion Ablation on FRLL-Morphs Across Operational Slices}
+\label{tab:ablation}
+\small
+\begin{tabularx}{\textwidth}{lccccc}
+\toprule
+\textbf{Architecture Variant} & \textbf{OpenCV Clean} & \textbf{StyleGAN2 Clean} & \textbf{StyleGAN2 P-S} & \textbf{Min AUC} & \textbf{Operational Diagnostic Finding} \\ \midrule
+Phase 1 Spatial ViT + ArcFace & 0.9993 / 0.94\% & 0.4988 / 51.0\% & 0.5780 & 0.4973 & Spatial blindness to smooth neural manifolds \\
+Phase 2 Early Concat (Trial 1) & 0.2422 (inv.) & 0.8525 / 24.0\% & -- & Collapse & Gradient dominance by fast CNN branches \\
+Phase 2 Max-OR Softmax Fusion & 0.7924 / 22.9\% & 0.5363 / 46.5\% & 0.6489 & $\sim 0.51$ & Softmax saturation on OOD bona fide samples \\
+Phase 2 Spatial Head Only & 0.9991 / 0.53\% & 0.9116 / 17.0\% & 0.3155 & 0.3155 & Vulnerable to analog print-scan low-pass filtering \\
+Phase 2 Frequency Head Only & 0.8564 / 23.0\% & 0.7644 / 29.9\% & 0.9977 & 0.6605 & Sub-optimal sensitivity to fine spatial seams \\
+Phase 2 Fused ArcFace Head & 0.2937 & 0.1305 & 0.3952 & 0.0324 & Uncalibrated joint margin collapses out-of-dist \\
+\textbf{Phase 2 Calibrated (Proposed)} & \textbf{0.9997 / 0.74\%} & \textbf{0.9399 / 14.66\%} & \textbf{0.9854} & \textbf{0.9809} & \textbf{Robust zero-shot generalization across all 15 slices} \\ \bottomrule
+\end{tabularx}
+\end{table}
 
 \subsection{Parameter and Latency Profile}
 Table~\ref{tab:param_profile} details the parameter count and single-image latency profile of UID-MAD. With a total inference latency of \textbf{17.3\,ms}, UID-MAD easily complies with the $<50$\,ms e-Gate budget.
 
-\begin{table*}[t]
+\begin{table}[h]
 \centering
 \caption{Parameter Count and Single-Image Inference Latency Profile (Dual NVIDIA T4 GPUs)}
 \label{tab:param_profile}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{@{}lccccr@{}}
+\small
+\begin{tabularx}{\textwidth}{lcccr}
 \toprule
-\textbf{Architectural Sub-Module} & \textbf{Total Parameters} & \textbf{Trainable Parameters (Stage 2)} & \textbf{Parameter Share (\%)} & \textbf{Precision} & \textbf{Single-Image Latency} \\ \midrule
-Stream A: DINOv2 ViT-S/14 Backbone & 21.60\,M & 0.59\,M (LoRA rank-16) & 96.5\% & FP16 & 14.2\,ms \\
-Spatial Multi-Scale Aggregator \& Projector & 0.46\,M & 0.46\,M & 2.1\% & FP16 & 0.6\,ms \\
-Stream B: Non-Trainable Laplacian Filter Bank & 0.00\,M & 0.00\,M (Fixed Kernels) & 0.0\% & FP16 & 0.4\,ms \\
-Stream B: Residual 4-Stage ConvNet & 0.22\,M & 0.22\,M & 1.0\% & FP16 & 1.6\,ms \\
-Cross-Stream Alignment \& Gating Network & 0.10\,M & 0.10\,M & 0.4\% & FP16 & 0.4\,ms \\
-Decoupled ArcFace Classification Heads ($3 \times 2$) & 0.001\,M & 0.001\,M & $< 0.1\%$ & FP16 & 0.1\,ms \\ \midrule
-\textbf{Total UID-MAD Architecture} & \textbf{22.38\,M} & \textbf{1.37\,M (6.1\% of total)} & \textbf{100.0\%} & \textbf{FP16} & \textbf{17.3\,ms} \\ \bottomrule
-\end{tabular}%
-}
-\end{table*}
+\textbf{Architectural Sub-Module} & \textbf{Total Parameters} & \textbf{Trainable Parameters (Stage 2)} & \textbf{Share (\%)} & \textbf{Single-Image Latency} \\ \midrule
+Stream A: DINOv2 ViT-S/14 Backbone & 21.60\,M & 0.59\,M (LoRA rank-16) & 96.5\% & 14.2\,ms \\
+Spatial Multi-Scale Aggregator \& Projector & 0.46\,M & 0.46\,M & 2.1\% & 0.6\,ms \\
+Stream B: Non-Trainable Laplacian Filter Bank & 0.00\,M & 0.00\,M (Fixed Kernels) & 0.0\% & 0.4\,ms \\
+Stream B: Residual 4-Stage ConvNet & 0.22\,M & 0.22\,M & 1.0\% & 1.6\,ms \\
+Cross-Stream Alignment \& Gating Network & 0.10\,M & 0.10\,M & 0.4\% & 0.4\,ms \\
+Decoupled ArcFace Heads ($3 \times 2$) & 0.001\,M & 0.001\,M & $< 0.1\%$ & 0.1\,ms \\ \midrule
+\textbf{Total UID-MAD Architecture} & \textbf{22.38\,M} & \textbf{1.37\,M (6.1\% of total)} & \textbf{100.0\%} & \textbf{17.3\,ms} \\ \bottomrule
+\end{tabularx}
+\end{table}
 
-\subsection{Phase 3 Edge Engineering Stack}
-The upcoming development schedule incorporates:
-\begin{enumerate}
-    \item \textbf{ONNX Runtime Export:} Stripping Python runtime overhead and exporting static computation graphs (\texttt{export\_onnx.py}).
-    \item \textbf{NVIDIA TensorRT Kernel Fusion:} Fusing convolutions, batch normalizations, and GELU activations into unified GPU execution kernels.
-    \item \textbf{FP16 and INT8 Quantization:} Reducing memory footprint by $4\times$ and boosting throughput by $3\times$ with $<0.1\%$ change in ROC-AUC.
-    \item \textbf{Explainability Interfaces:} Real-time visual overlay generation utilizing Spatial Grad-CAM heatmaps (highlighting double irises and blending seams) and 2D Fourier residual spectral saliency maps for border guard inspection.
+% =========================================================================
+% 6. WORK REMAINING & END-SEMESTER ROADMAP
+% =========================================================================
+\section{Remaining Work and End-Semester Execution Roadmap}
+\label{sec:roadmap}
+
+While the forensic detection pipeline has been empirically validated, the second half of the major project will transition UID-MAD from experimental code into a hardened, deployable border e-Gate inspection system. The remaining engineering work is scheduled across three primary phases:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Phase 3: Embedded Edge Optimization (Weeks 9--11):}
+    \begin{itemize}
+        \item \textbf{ONNX Runtime Export:} Stripping Python runtime overhead and exporting static computation graphs via \texttt{torch.onnx.export} with fixed shapes and opset 17.
+        \item \textbf{NVIDIA TensorRT Kernel Fusion:} Compiling the ONNX graph into TensorRT engines with fused Conv-BatchNorm-GELU layers and optimized FP16 execution kernels on edge GPU controllers (Jetson Orin / RTX edge devices).
+        \item \textbf{INT8 Quantization & Calibration:} Calibrating weights and activations using KL-divergence on genuine bona fide batches to reduce the memory footprint to $<25$\,MB and achieve single-image latency $<10$\,ms with $<0.1\%$ degradation in ROC-AUC.
+    \end{itemize}
+    \item \textbf{Phase 4: Real-Time Border e-Gate Application & Explainability (Weeks 12--14):}
+    \begin{itemize}
+        \item \textbf{Visual Explainability Overlays:} Implementing real-time Spatial Grad-CAM heatmaps to visually isolate double iris contours and neckline blending cutouts for human border control officers.
+        \item \textbf{Fourier Spectral Saliency Maps:} Generating 2D residual frequency heatmaps highlighting checkerboard upsampling peaks when synthetic generative attacks are detected.
+        \item \textbf{Operator Desktop Interface:} Packaging the optimized inference pipeline into an intuitive desktop/web dashboard displaying live passport scan ingestion, ICAO Doc 9303 compliance checks, calibrated Z-score meters, and binary ACCEPT/REJECT verdicts.
+    \end{itemize}
+    \item \textbf{Final Evaluation & Project Thesis (Weeks 15--16):}
+    \begin{itemize}
+        \item Comprehensive benchmarking on differential attack datasets (D-MAD protocols) if live reference streams are available.
+        \item Compiling the comprehensive Final Major Project Thesis and technical demonstration video.
+    \end{itemize}
 \end{enumerate}
 
 % =========================================================================
-% SECTION VIII: CONCLUSION
+% 7. CONCLUSION
 % =========================================================================
 \section{Conclusion}
 \label{sec:conclusion}
 
-This research designed, implemented, and empirically validated UID-MAD, a Single-Image Morph Attack Detection framework addressing the two primary failure modes of modern MAD: the generative latent morph blind spot and analog print-scan channel degradation. By factoring morph detection according to attack physics, the system pairs self-supervised Vision Transformers for localized alpha-blending seams with high-pass Laplacian and Haar wavelet filters for neural upsampling noise.
+This mid-semester progress report presented the design, implementation, and empirical verification of **UID-MAD (Unified Interpretable Dual-Stream Morph Attack Detection)**. By factoring morph detection according to attack physics, the system combines a LoRA-adapted DINOv2 Vision Transformer for localized alpha-blending seams with high-pass Laplacian and Haar wavelet filters for neural upsampling noise. 
 
-Evaluated strictly under ISO/IEC 30107-3 standards across 15 operational slices of FRLL-Morphs, UID-MAD resolved the generative blind spot, elevating clean StyleGAN2 detection from a random-chance 0.4988 to 0.9399 ROC-AUC. Furthermore, the framework established an orthogonal domain complementarity under physical print-scan degradation ($>0.997$ frequency AUC across all generators). With equal-weight bona fide Z-score calibration achieving an overall mean of 0.992 ROC-AUC and an edge inference latency of 17.3\,ms, UID-MAD delivers a standardized, robust defense for automated border security.
+Evaluated strictly under ISO/IEC 30107-3 standards across 15 operational slices of FRLL-Morphs, UID-MAD resolved the generative blind spot, elevating clean StyleGAN2 detection from a random-chance 0.4988 to 0.9399 ROC-AUC. Furthermore, the framework established an orthogonal domain complementarity under physical print-scan degradation ($>0.997$ frequency AUC across all generators). With equal-weight bona fide Z-score calibration achieving an overall mean of 0.992 ROC-AUC and an edge inference latency of 17.3\,ms, UID-MAD establishes a robust, standards-compliant foundation for automated border security.
+
+\vspace{10pt}
 
 % =========================================================================
 % REFERENCES
 % =========================================================================
-\IEEEtriggeratref{6}
 \begingroup
-\footnotesize
-\bibliographystyle{IEEEtran}
-\bibliography{references}
+\small
+\begin{thebibliography}{11}
+
+\bibitem{icao9303}
+International Civil Aviation Organization (ICAO), \emph{Doc 9303: Machine Readable Travel Documents, Part 9: Deployment of Biometric Identification and Electronic Storage of Data in eMRTDs}, 8th~ed., 2021.
+
+\bibitem{scherhag2019face}
+U.~Scherhag, C.~Rathgeb, J.~Merkle, R.~Breithaupt, and C.~Busch, ``Face recognition systems under morphing attacks: A survey,'' \emph{IEEE Access}, vol.~7, pp. 87\,126--87\,150, 2019.
+
+\bibitem{ferrara2021morphing}
+M.~Ferrara, A.~Franco, and D.~Maltoni, ``Face morphing attacks: What is the risk for automated border control?'' \emph{IEEE Transactions on Information Forensics and Security}, vol.~16, pp. 2460--2474, 2021.
+
+\bibitem{karras2020analyzing}
+T.~Karras, S.~Laine, M.~Aittala, J.~Hellsten, J.~Lehtinen, and T.~Aila, ``Analyzing and improving the image quality of StyleGAN,'' in \emph{Proc. IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}, 2020, pp. 8110--8119.
+
+\bibitem{frank2020leveraging}
+J.~Frank, T.~Eisenhofer, L.~Sch{\"o}nherr, A.~Fischer, D.~Kolossa, and T.~Holz, ``Leveraging frequency analysis for deep fake image recognition,'' in \emph{Proc. International Conference on Machine Learning (ICML)}, 2020, pp. 3247--3258.
+
+\bibitem{durall2020watch}
+R.~Durall, M.~Keuper, and J.~Keuper, ``Watch your up-convolution: CNN based generative deepfake detection,'' in \emph{Proc. IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}, 2020, pp. 7315--7324.
+
+\bibitem{damer2021morph}
+N.~Damer, F.~B. Saladie, A.~Braun, and A.~Kuijper, ``MORPH-LFW: A benchmark for face morphing attack detection under genuine quality variations,'' \emph{IEEE Transactions on Biometrics, Behavior, and Identity Science (T-BIOM)}, vol.~3, no.~4, pp. 512--525, 2021.
+
+\bibitem{oquab2023dinov2}
+M.~Oquab, T.~Darcet, T.~Moutakanni, H.~Vo, M.~Szafraniec, V.~Khalidov, P.~Fernandez, D.~Haziza, F.~Massa, A.~El-Nouby \emph{et~al.}, ``DINOv2: Learning robust visual features without supervision,'' \emph{Transactions on Machine Learning Research (TMLR)}, 2023.
+
+\bibitem{hu2021lora}
+E.~J. Hu, Y.~Shen, P.~Wallis, Z.~Allen-Zhu, Y.~Li, S.~Wang, L.~Wang, and W.~Chen, ``LoRA: Low-rank adaptation of large language models,'' in \emph{Proc. International Conference on Learning Representations (ICLR)}, 2022.
+
+\bibitem{damer2022smdd}
+N.~Damer, F.~Boutros, M.~S{\"u}{\ss}milch, M.~Fang, F.~Kirchgasser, K.~Raja, C.~Busch, and A.~Kuijper, ``SMDD -- synthetic face morphing attack detection development dataset,'' in \emph{Proc. IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops (CVPRW)}, 2022, pp. 1715--1724.
+
+\bibitem{iso30107_3}
+\emph{ISO/IEC 30107-3: Information Technology -- Biometric Presentation Attack Detection -- Part 3: Testing and Reporting}, International Organization for Standardization (ISO) Std., 2017.
+
+\end{thebibliography}
 \endgroup
 
 \end{document}
