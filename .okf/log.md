@@ -31,4 +31,6 @@ type: log
 - Converted manuscript into a clean single-column B.Tech Major Project Progress Report (CSPC401, NIT Kurukshetra) with 1-inch margins.
 - Redesigned architecture diagram with bold, readable typography (348 KB PNG) and generated an editable Draw.io XML source (`figures/uid_mad_architecture.drawio`).
 - Streamlined contents to remove research-paper filler while preserving all empirical findings, 6 full-width tables, Kaggle Seaborn confusion matrices, and qualitative forensic visualizations.
-- Repackaged into `ieee_report.zip` (2.26 MB) for instant one-click Overleaf compilation.
+- Removed `[Team Lead]` from author block on Page 1, normalized excessive in-sentence and table bolding, removed raw markdown artifacts, and wrapped all 6 tables in `\resizebox{\textwidth}{!}{...}` to eliminate page margin clipping.
+- Repackaged into `ieee_report.zip` (2.3 MB) for instant one-click Overleaf compilation.
+
