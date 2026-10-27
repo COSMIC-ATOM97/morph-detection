@@ -27,5 +27,8 @@ type: log
 - Resolved Overleaf free-tier compile timeout ("Your project needs more compile time") by replacing runtime TikZ/PGFPlots bar rendering with a pre-rendered 300 DPI graphic (`figures/quantitative_eval_charts.png`), removing `pgfplots`/`tikz` packages, and optimizing image memory footprint down to 2.47 MB.
 - Balanced bibliography columns with `\IEEEtriggeratref{6}` and float spacing to pull citation [11] onto Page 11, eliminating the blank 12th page.
 - Repackaged final Overleaf-ready draft into `ieee_report.zip`.
-
-
+## 2026-10-27
+- Converted manuscript into a clean single-column B.Tech Major Project Progress Report (CSPC401, NIT Kurukshetra) with 1-inch margins.
+- Redesigned architecture diagram with bold, readable typography (348 KB PNG) and generated an editable Draw.io XML source (`figures/uid_mad_architecture.drawio`).
+- Streamlined contents to remove research-paper filler while preserving all empirical findings, 6 full-width tables, Kaggle Seaborn confusion matrices, and qualitative forensic visualizations.
+- Repackaged into `ieee_report.zip` (2.26 MB) for instant one-click Overleaf compilation.
