@@ -30,10 +30,6 @@
 \DeclareMathOperator*{\argmin}{arg\,min}
 \newcommand{\norm}[1]{\left\lVert#1\right\rVert}
 
-% Colors
-\definecolor{headerblue}{RGB}{29, 78, 216}
-\definecolor{darkslate}{RGB}{15, 23, 42}
-
 \begin{document}
 
 % =========================================================================
@@ -44,40 +40,40 @@
     {\large \textbf{NATIONAL INSTITUTE OF TECHNOLOGY KURUKSHETRA}}\\[2pt]
     {\normalsize Kurukshetra, Haryana -- 136119, India}\\[10pt]
 
-    \rule{\textwidth}{1.5pt}\\[12pt]
+    \rule{\textwidth}{1.2pt}\\[10pt]
 
     {\LARGE \textbf{UID-MAD: Unified Interpretable Dual-Stream Face Morph Attack Detection via Spatial Foundation Transformers and Spectral Residuals}}\\[8pt]
     
-    {\large \textbf{B.Tech Major Project Mid-Semester Progress Report (Course Code: CSPC401)}}\\[4pt]
+    {\large B.Tech Major Project Mid-Semester Progress Report (Course Code: CSPC401)}\\[3pt]
     {\normalsize Academic Year: 2026--2027 (Odd Semester)}\\[8pt]
 
-    \rule{\textwidth}{0.8pt}\\[14pt]
+    \rule{\textwidth}{0.6pt}\\[12pt]
 
-    \begin{minipage}{0.52\textwidth}
-        \textbf{Submitted By:}\\[3pt]
-        \textbf{Himank Gupta} (Roll No: 123103097) [Team Lead]\\[1pt]
-        \textbf{Bablu Prajapati} (Roll No: 123103019)\\[1pt]
-        \textbf{Puranpal Singh} (Roll No: 123103021)\\[4pt]
+    \begin{minipage}{0.48\textwidth}
+        \textbf{Submitted By:}\\[4pt]
+        Himank Gupta (Roll No: 123103097)\\[2pt]
+        Bablu Prajapati (Roll No: 123103019)\\[2pt]
+        Puranpal Singh (Roll No: 123103021)\\[4pt]
         \textit{B.Tech (Computer Engineering), 7th Semester}
     \end{minipage}
     \hfill
-    \begin{minipage}{0.44\textwidth}
+    \begin{minipage}{0.48\textwidth}
         \flushright
-        \textbf{Under the Supervision of:}\\[3pt]
-        \textbf{Dr. Abhilasha Sharma}\\[1pt]
-        Assistant Professor\\[1pt]
-        Department of Computer Engineering\\[1pt]
+        \textbf{Under the Supervision of:}\\[4pt]
+        Dr. Abhilasha Sharma\\[2pt]
+        Assistant Professor\\[2pt]
+        Department of Computer Engineering\\[2pt]
         National Institute of Technology Kurukshetra
     \end{minipage}
 \end{center}
 
-\vspace{10pt}
+\vspace{8pt}
 
 % =========================================================================
 % EXECUTIVE SUMMARY / ABSTRACT
 % =========================================================================
 \begin{abstract}
-\noindent Face morphing attacks pose an urgent security threat to Automated Border Control (ABC) e-Gates and electronic Machine Readable Travel Documents (eMRTDs, ICAO Doc 9303). By blending facial features from an unauthorized traveler and a clean-record accomplice into a single hybrid portrait, an attacker can obtain a legitimate credential that verifies against both identities in Commercial-Off-The-Shelf (COTS) facial recognition systems. This mid-semester progress report documents the complete architectural formulation, model engineering, and empirical validation of \textbf{UID-MAD (Unified Interpretable Dual-Stream Morph Attack Detection)}, a single-image framework developed for real-time edge deployment. 
+\noindent Face morphing attacks pose an urgent security threat to Automated Border Control (ABC) e-Gates and electronic Machine Readable Travel Documents (eMRTDs, ICAO Doc 9303). By blending facial features from an unauthorized traveler and a clean-record accomplice into a single hybrid portrait, an attacker can obtain a legitimate credential that verifies against both identities in Commercial-Off-The-Shelf (COTS) facial recognition systems. This mid-semester progress report documents the complete architectural formulation, model engineering, and empirical validation of UID-MAD (Unified Interpretable Dual-Stream Morph Attack Detection), a single-image framework developed for real-time edge deployment. 
 
 In Phase~1, our baseline spatial detector deploying a self-supervised DINOv2 Vision Transformer with Low-Rank Adaptation (LoRA) and multi-scale patch token pooling achieved near-perfect accuracy on traditional landmark-warped morphs (0.9993 ROC-AUC on OpenCV, 0.9958 on FaceMorpher). However, it collapsed completely to random chance against generative latent morphs (StyleGAN2: 0.4988 ROC-AUC, 51.00\% EER) due to the absence of physical blending seams. In Phase~2, UID-MAD resolved this vulnerability by introducing a dedicated spatial-frequency stream utilizing a depthwise Laplacian filter bank and 2D Haar wavelets, a decoupled Multi-Task ArcFace optimization scheme, and an inference-time bona fide Z-score decision calibration. 
 
@@ -86,7 +82,7 @@ Evaluated zero-shot under strict ISO/IEC 30107-3 protocols across all 15 operati
 
 \textbf{Keywords:} Face Morph Attack Detection, S-MAD, DINOv2, Low-Rank Adaptation (LoRA), ArcFace, Laplacian Residual, Haar Wavelet, ISO/IEC 30107-3, APCER, BPCER, FRLL-Morphs, SMDD, StyleGAN2.
 
-\vspace{10pt}
+\vspace{8pt}
 
 % =========================================================================
 % 1. INTRODUCTION & PROBLEM IDENTIFICATION
@@ -116,7 +112,7 @@ Crucially, our forensic investigation establishes that face morphing relies on t
         I_{\text{morph}} = \mathcal{G}(\mathbf{w}_{\text{morph}})
         \label{eq:gan_synth}
     \end{equation}
-    Because generative latent morphs are synthesized through continuous neural manifold projections, they contain \textbf{zero spatial seams, zero ghosting, and zero double contours}. Instead, neural transposed convolutions and upsampling operators imprint periodic Nyquist checkerboard patterns into the high-frequency spectrum \cite{frank2020leveraging, durall2020watch}. Detectors that exclusively analyze RGB patch geometry are structurally blind to this attack family.
+    Because generative latent morphs are synthesized through continuous neural manifold projections, they contain zero spatial seams, zero ghosting, and zero double contours. Instead, neural transposed convolutions and upsampling operators imprint periodic Nyquist checkerboard patterns into the high-frequency spectrum \cite{frank2020leveraging, durall2020watch}. Detectors that exclusively analyze RGB patch geometry are structurally blind to this attack family.
 \end{enumerate}
 
 \subsection{Why Existing Face Matchers and MAD Baselines Fail}
@@ -247,22 +243,22 @@ The binary presentation verdict is obtained by comparing $Z_{\text{final}}$ agai
 \label{sec:results}
 
 \subsection{In-Domain Training Convergence on SMDD}
-Table~\ref{tab:smdd_training_history} compiles the complete in-domain training records on SMDD across both Phase~1 and Phase~2. Phase~2 trained across 8 epochs with two-stage optimization (Head Warmup for epochs 1--4, LoRA Fine-Tuning for epochs 5--8), achieving $99.12\%$ training accuracy, $0.0000\%$ validation EER, and near-zero validation loss ($2.50 \times 10^{-8}$).
+Table~\ref{tab:smdd_training_history} compiles the complete in-domain training records on SMDD across both Phase~1 and Phase~2. Phase~2 trained across 8 epochs with two-stage optimization (Head Warmup for epochs 1--4, LoRA Fine-Tuning for epochs 5--8), achieving 99.12\% training accuracy, 0.0000\% validation EER, and near-zero validation loss ($2.50 \times 10^{-8}$).
 
 \begin{table}[h]
 \centering
 \caption{In-Domain Training Convergence History on SMDD (Phase 1 Baseline vs. Phase 2 UID-MAD Dual-Stream)}
 \label{tab:smdd_training_history}
-\small
-\begin{tabularx}{\textwidth}{cclccccc}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{cclccccc}
 \toprule
-\textbf{Phase} & \textbf{Epoch} & \textbf{Optimization Stage} & \textbf{Train Loss} & \textbf{Train Acc.} & \textbf{Val. Loss} & \textbf{Val. EER} & \textbf{Val. ROC-AUC} \\ \midrule
-\multirow{4}{*}{\textbf{Phase 1: Spatial}} 
+Phase & Epoch & Optimization Stage & Train Loss & Train Acc. & Val. Loss & Val. EER & Val. ROC-AUC \\ \midrule
+\multirow{4}{*}{Phase 1: Spatial} 
  & 1 & Head Warmup & 0.5422 & 92.06\% & 0.0072 & 0.126\% & 0.999984 \\
  & 2 & Head Warmup & 0.1544 & 95.54\% & 0.0036 & 0.063\% & 0.999993 \\
  & 3 & Head Warmup & 0.1226 & 96.17\% & 0.0061 & 0.037\% & 0.999997 \\
  & 4 & Fine-tune Last 2 Blocks & 0.1223 & 96.15\% & 0.0071 & 0.010\% & 0.999999 \\ \midrule
-\multirow{8}{*}{\textbf{Phase 2: UID-MAD}} 
+\multirow{8}{*}{Phase 2: UID-MAD} 
  & 1 & Stage 1: Head Warmup & 2.7199 & 92.58\% & $3.28 \times 10^{-3}$ & 0.0201\% & 0.999999 \\
  & 2 & Stage 1: Head Warmup & 1.4864 & 95.96\% & $7.11 \times 10^{-5}$ & 0.0000\% & 1.000000 \\
  & 3 & Stage 1: Head Warmup & 1.1097 & 96.63\% & $4.47 \times 10^{-3}$ & 0.0201\% & 0.999999 \\
@@ -270,8 +266,9 @@ Table~\ref{tab:smdd_training_history} compiles the complete in-domain training r
  & 5 & Stage 2: LoRA Fine-Tuning & 0.6428 & 97.74\% & $7.50 \times 10^{-8}$ & 0.0000\% & 1.000000 \\
  & 6 & Stage 2: LoRA Fine-Tuning & 0.5726 & 98.39\% & $4.19 \times 10^{-8}$ & 0.0000\% & 1.000000 \\
  & 7 & Stage 2: LoRA Fine-Tuning & 0.5241 & 98.83\% & $2.92 \times 10^{-8}$ & 0.0000\% & 1.000000 \\
- & 8 & Stage 2: LoRA Fine-Tuning & \textbf{0.5039} & \textbf{99.12\%} & \textbf{$2.50 \times 10^{-8}$} & \textbf{0.0000\%} & \textbf{1.000000} \\ \bottomrule
-\end{tabularx}
+ & 8 & Stage 2: LoRA Fine-Tuning & 0.5039 & 99.12\% & $2.50 \times 10^{-8}$ & 0.0000\% & 1.000000 \\ \bottomrule
+\end{tabular}%
+}
 \end{table}
 
 \subsection{Phase 1 Baseline Generative Collapse vs. Phase 2 Recovery}
@@ -281,14 +278,14 @@ When evaluated zero-shot across FRLL-Morphs (Table~\ref{tab:phase1_frll}), the s
 \centering
 \caption{Phase 1 Spatial Baseline Zero-Shot Evaluation across 15 Operational Slices of FRLL-Morphs}
 \label{tab:phase1_frll}
-\small
-\begin{tabularx}{\textwidth}{llcccc}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llcccc}
 \toprule
-\textbf{Generator Family} & \textbf{Operational Condition} & \textbf{Equal Error Rate (EER)} & \textbf{BPCER @ 1.0\% APCER} & \textbf{BPCER @ 5.0\% APCER} & \textbf{ROC-AUC Score} \\ \midrule
-\multirow{3}{*}{OpenCV} & Clean Digital & \textbf{0.94\%} & \textbf{0.00\%} & \textbf{0.00\%} & \textbf{0.9993} \\
+Generator Family & Operational Condition & Equal Error Rate (EER) & BPCER @ 1.0\% APCER & BPCER @ 5.0\% APCER & ROC-AUC Score \\ \midrule
+\multirow{3}{*}{OpenCV} & Clean Digital & 0.94\% & 0.00\% & 0.00\% & 0.9993 \\
  & JPEG ($q=30$) & 0.94\% & 0.98\% & 0.00\% & 0.9992 \\
  & Print-Scan & 9.16\% & 29.90\% & 15.70\% & 0.9786 \\ \midrule
-\multirow{3}{*}{FaceMorpher} & Clean Digital & \textbf{2.45\%} & 19.10\% & \textbf{0.00\%} & \textbf{0.9958} \\
+\multirow{3}{*}{FaceMorpher} & Clean Digital & 2.45\% & 19.10\% & 0.00\% & 0.9958 \\
  & JPEG ($q=30$) & 2.49\% & 16.20\% & 0.00\% & 0.9956 \\
  & Print-Scan & 5.85\% & 26.50\% & 7.40\% & 0.9859 \\ \midrule
 \multirow{3}{*}{WebMorph} & Clean Digital & 4.91\% & 27.50\% & 4.90\% & 0.9886 \\
@@ -297,23 +294,24 @@ When evaluated zero-shot across FRLL-Morphs (Table~\ref{tab:phase1_frll}), the s
 \multirow{3}{*}{AMSL} & Clean Digital & 13.20\% & 76.00\% & 33.80\% & 0.9461 \\
  & JPEG ($q=30$) & 13.70\% & 76.50\% & 32.40\% & 0.9434 \\
  & Print-Scan & 39.80\% & 92.20\% & 80.40\% & 0.6491 \\ \midrule
-\multirow{3}{*}{StyleGAN2} & Clean Digital & \textbf{51.00\%} & \textbf{99.50\%} & \textbf{99.00\%} & \textbf{0.4988} \\
+\multirow{3}{*}{StyleGAN2} & Clean Digital & 51.00\% & 99.50\% & 99.00\% & 0.4988 \\
  & JPEG ($q=30$) & 50.00\% & 99.50\% & 98.50\% & 0.4973 \\
  & Print-Scan & 45.80\% & 96.10\% & 88.20\% & 0.5780 \\ \bottomrule
-\end{tabularx}
+\end{tabular}%
+}
 \end{table}
 
 In Phase~2, Stream~B's high-pass Laplacian filter and Haar wavelet transform successfully isolated periodic upsampling energy. On clean images, StyleGAN2 detection surged:
 \begin{equation}
-    \text{Phase 1 AUC: } 0.4988 \implies \text{Phase 2 AUC: } \mathbf{0.9399} \quad (\mathbf{+0.4411})
+    \text{Phase 1 AUC: } 0.4988 \implies \text{Phase 2 AUC: } 0.9399 \quad (+0.4411)
 \end{equation}
-EER dropped from 51.00\% down to 14.66\%. Under print-scan conditions, StyleGAN2 detection reached \textbf{0.9854 ROC-AUC (3.92\% EER)}.
+EER dropped from 51.00\% down to 14.66\%. Under print-scan conditions, StyleGAN2 detection reached 0.9854 ROC-AUC (3.92\% EER).
 
 \subsection{Discovery of Print-Scan Orthogonal Frequency Surge}
 Under physical print-scan evaluation, an essential property was uncovered:
 \begin{itemize}[leftmargin=*]
-    \item Analog printing and scanner MTF act as a low-pass filter, destroying spatial seams. Consequently, Stream~A spatial AUC collapsed to \textbf{0.6355} on WebMorph and \textbf{0.3155} on StyleGAN2.
-    \item However, ink dispersion noise and halftone screening patterns paradoxically amplified residual high-frequency artifacts. Stream~B's frequency stream surged to \textbf{$>0.997$ ROC-AUC across every generator family}: OpenCV (0.9992 AUC), FaceMorpher (0.9996 AUC), WebMorph (0.9976 AUC), StyleGAN2 (0.9977 AUC), and AMSL (0.9981 AUC).
+    \item Analog printing and scanner MTF act as a low-pass filter, destroying spatial seams. Consequently, Stream~A spatial AUC collapsed to 0.6355 on WebMorph and 0.3155 on StyleGAN2.
+    \item However, ink dispersion noise and halftone screening patterns paradoxically amplified residual high-frequency artifacts. Stream~B's frequency stream surged to $>0.997$ ROC-AUC across every generator family: OpenCV (0.9992 AUC), FaceMorpher (0.9996 AUC), WebMorph (0.9976 AUC), StyleGAN2 (0.9977 AUC), and AMSL (0.9981 AUC).
 \end{itemize}
 This proves that spatial and frequency streams are orthogonally complementary: when physical printing destroys spatial cues, frequency signatures rescue the decision. Figure~\ref{fig:quantitative_eval_charts} summarizes these empirical trends.
 
@@ -325,32 +323,33 @@ This proves that spatial and frequency streams are orthogonally complementary: w
 \end{figure}
 
 \subsection{Full 15-Slice FRLL-Morphs Benchmark Record}
-Table~\ref{tab:full_benchmark} compiles the complete official evaluation record across all 15 operational splits. UID-MAD achieved $\ge 0.9809$ ROC-AUC on every subset, with an overall mean of \textbf{0.992 ROC-AUC}.
+Table~\ref{tab:full_benchmark} compiles the complete official evaluation record across all 15 operational splits. UID-MAD achieved $\ge 0.9809$ ROC-AUC on every subset, with an overall mean of 0.992 ROC-AUC.
 
 \begin{table}[h]
 \centering
 \caption{Complete 15-Slice FRLL-Morphs Benchmark Results under ISO/IEC 30107-3 Biometric Standards}
 \label{tab:full_benchmark}
-\footnotesize
-\begin{tabularx}{\textwidth}{llcccccccr}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llcccccccr}
 \toprule
-\textbf{Generator} & \textbf{Condition} & \textbf{Spatial AUC / EER} & \textbf{Freq AUC / EER} & \textbf{Fused Head AUC} & \textbf{Calibrated AUC} & \textbf{Calibrated EER} & \textbf{BPCER@1\%} & \textbf{BPCER@5\%} & \textbf{Val Loss} \\ \midrule
-\multirow{3}{*}{OpenCV} & Clean & 0.9991 / 0.53\% & 0.8564 / 23.03\% & 0.2937 & \textbf{0.9997} & \textbf{0.74\%} & 0.00\% & 0.00\% & 13.28 \\
- & JPEG ($q=30$) & 0.9990 / 0.74\% & 0.8576 / 23.23\% & 0.2982 & \textbf{0.9996} & \textbf{0.25\%} & 0.00\% & 0.00\% & 13.26 \\
- & Print-Scan & 0.9143 / 16.28\% & \textbf{0.9992 / 1.47\%} & 0.6477 & \textbf{0.9973} & \textbf{2.33\%} & 2.45\% & 2.45\% & 10.27 \\ \midrule
-\multirow{3}{*}{FaceMorpher} & Clean & 0.9994 / 0.86\% & 0.9506 / 11.69\% & 0.2823 & \textbf{0.9999} & \textbf{0.41\%} & 0.00\% & 0.00\% & 13.30 \\
- & JPEG ($q=30$) & 0.9993 / 0.70\% & 0.9507 / 11.28\% & 0.2838 & \textbf{0.9999} & \textbf{0.49\%} & 0.00\% & 0.00\% & 13.30 \\
- & Print-Scan & 0.9342 / 13.61\% & \textbf{0.9996 / 1.06\%} & 0.6580 & \textbf{0.9994} & \textbf{1.02\%} & 1.47\% & 0.49\% & 10.42 \\ \midrule
-\multirow{3}{*}{WebMorph} & Clean & 0.9963 / 2.00\% & 0.7395 / 31.68\% & 0.0324 & \textbf{0.9968} & \textbf{1.96\%} & 14.71\% & 0.00\% & 15.92 \\
- & JPEG ($q=30$) & 0.9961 / 2.25\% & 0.7426 / 30.29\% & 0.0358 & \textbf{0.9967} & \textbf{2.21\%} & 13.73\% & 0.00\% & 15.92 \\
- & Print-Scan & 0.6355 / 41.50\% & \textbf{0.9976 / 2.49\%} & 0.2070 & \textbf{0.9893} & \textbf{3.39\%} & 7.84\% & 2.45\% & 15.66 \\ \midrule
-\multirow{3}{*}{StyleGAN2} & Clean & 0.9116 / 17.03\% & 0.7644 / 29.89\% & 0.1305 & \textbf{0.9399} & \textbf{14.66\%} & 55.88\% & 29.41\% & 15.32 \\
- & JPEG ($q=30$) & 0.9083 / 16.70\% & 0.7640 / 29.93\% & 0.1348 & \textbf{0.9384} & \textbf{14.33\%} & 56.37\% & 29.41\% & 15.34 \\
- & Print-Scan & 0.3155 / 63.94\% & \textbf{0.9977 / 1.92\%} & 0.3952 & \textbf{0.9854} & \textbf{3.92\%} & 17.65\% & 3.43\% & 15.60 \\ \midrule
-\multirow{3}{*}{AMSL} & Clean & 0.9982 / 2.01\% & 0.6605 / 37.99\% & 0.3748 & \textbf{0.9938} & \textbf{2.92\%} & 16.18\% & 0.98\% & 15.78 \\
- & JPEG ($q=30$) & 0.9979 / 2.15\% & 0.6634 / 37.37\% & 0.3899 & \textbf{0.9935} & \textbf{3.23\%} & 16.18\% & 1.47\% & 15.78 \\
- & Print-Scan & 0.3743 / 59.43\% & \textbf{0.9981 / 1.52\%} & 0.2259 & \textbf{0.9809} & \textbf{6.73\%} & 14.22\% & 8.33\% & 17.08 \\ \bottomrule
-\end{tabularx}
+Generator & Condition & Spatial AUC / EER & Freq AUC / EER & Fused Head AUC & Calibrated AUC & Calibrated EER & BPCER@1\% & BPCER@5\% & Val Loss \\ \midrule
+\multirow{3}{*}{OpenCV} & Clean & 0.9991 / 0.53\% & 0.8564 / 23.03\% & 0.2937 & 0.9997 & 0.74\% & 0.00\% & 0.00\% & 13.28 \\
+ & JPEG ($q=30$) & 0.9990 / 0.74\% & 0.8576 / 23.23\% & 0.2982 & 0.9996 & 0.25\% & 0.00\% & 0.00\% & 13.26 \\
+ & Print-Scan & 0.9143 / 16.28\% & 0.9992 / 1.47\% & 0.6477 & 0.9973 & 2.33\% & 2.45\% & 2.45\% & 10.27 \\ \midrule
+\multirow{3}{*}{FaceMorpher} & Clean & 0.9994 / 0.86\% & 0.9506 / 11.69\% & 0.2823 & 0.9999 & 0.41\% & 0.00\% & 0.00\% & 13.30 \\
+ & JPEG ($q=30$) & 0.9993 / 0.70\% & 0.9507 / 11.28\% & 0.2838 & 0.9999 & 0.49\% & 0.00\% & 0.00\% & 13.30 \\
+ & Print-Scan & 0.9342 / 13.61\% & 0.9996 / 1.06\% & 0.6580 & 0.9994 & 1.02\% & 1.47\% & 0.49\% & 10.42 \\ \midrule
+\multirow{3}{*}{WebMorph} & Clean & 0.9963 / 2.00\% & 0.7395 / 31.68\% & 0.0324 & 0.9968 & 1.96\% & 14.71\% & 0.00\% & 15.92 \\
+ & JPEG ($q=30$) & 0.9961 / 2.25\% & 0.7426 / 30.29\% & 0.0358 & 0.9967 & 2.21\% & 13.73\% & 0.00\% & 15.92 \\
+ & Print-Scan & 0.6355 / 41.50\% & 0.9976 / 2.49\% & 0.2070 & 0.9893 & 3.39\% & 7.84\% & 2.45\% & 15.66 \\ \midrule
+\multirow{3}{*}{StyleGAN2} & Clean & 0.9116 / 17.03\% & 0.7644 / 29.89\% & 0.1305 & 0.9399 & 14.66\% & 55.88\% & 29.41\% & 15.32 \\
+ & JPEG ($q=30$) & 0.9083 / 16.70\% & 0.7640 / 29.93\% & 0.1348 & 0.9384 & 14.33\% & 56.37\% & 29.41\% & 15.34 \\
+ & Print-Scan & 0.3155 / 63.94\% & 0.9977 / 1.92\% & 0.3952 & 0.9854 & 3.92\% & 17.65\% & 3.43\% & 15.60 \\ \midrule
+\multirow{3}{*}{AMSL} & Clean & 0.9982 / 2.01\% & 0.6605 / 37.99\% & 0.3748 & 0.9938 & 2.92\% & 16.18\% & 0.98\% & 15.78 \\
+ & JPEG ($q=30$) & 0.9979 / 2.15\% & 0.6634 / 37.37\% & 0.3899 & 0.9935 & 3.23\% & 16.18\% & 1.47\% & 15.78 \\
+ & Print-Scan & 0.3743 / 59.43\% & 0.9981 / 1.52\% & 0.2259 & 0.9809 & 6.73\% & 14.22\% & 8.33\% & 17.08 \\ \bottomrule
+\end{tabular}%
+}
 \end{table}
 
 \subsection{Empirical Confusion Matrix and Operational Error Distribution}
@@ -371,8 +370,8 @@ Figure~\ref{fig:confusion_matrices} presents the empirical confusion matrices pl
 \subsection{Multi-Stream ROC Curve Analysis}
 Figure~\ref{fig:roc_comparison} presents the official empirical ROC curves:
 \begin{itemize}[leftmargin=*]
-    \item On \texttt{morph\_stylegan} (Figure~\ref{fig:roc_stylegan_p1} vs. \ref{fig:roc_stylegan_p2}), the Phase~1 spatial model runs along the random guess diagonal ($0.4988$ AUC). In Phase~2, UID-MAD's calibrated curve surges to \textbf{0.940 AUC}, driven by the frequency stream.
-    \item On landmark morphs (Figure~\ref{fig:roc_opencv}), the spatial stream and calibrated fusion maintain near-perfect vertical separation ($1.000$ AUC).
+    \item On \texttt{morph\_stylegan} (Figure~\ref{fig:roc_stylegan_p1} vs. \ref{fig:roc_stylegan_p2}), the Phase~1 spatial model runs along the random guess diagonal (0.4988 AUC). In Phase~2, UID-MAD's calibrated curve surges to 0.940 AUC, driven by the frequency stream.
+    \item On landmark morphs (Figure~\ref{fig:roc_opencv}), the spatial stream and calibrated fusion maintain near-perfect vertical separation (1.000 AUC).
 \end{itemize}
 
 \begin{figure}[h]
@@ -401,7 +400,7 @@ Figure~\ref{fig:roc_comparison} presents the official empirical ROC curves:
 \label{fig:roc_comparison}
 \end{figure}
 
-\subsection{Qualitative Forensic Visualizations & Validation Exemplars}
+\subsection{Qualitative Forensic Visualizations and Validation Exemplars}
 Figure~\ref{fig:qualitative_samples} provides qualitative forensic visualizations comparing authentic facial portraits and morph attacks from the FRLL-Morphs benchmark alongside their corresponding high-pass Laplacian frequency residuals:
 \begin{itemize}[leftmargin=*]
     \item \textbf{Bona Fide Presentation (Figure~\ref{fig:qualitative_samples}a):} The natural facial portrait generates a continuous, smooth spatial-frequency decay across anatomical facial structures ($Z = -2.14$, cleanly classified as bona fide).
@@ -423,18 +422,19 @@ Table~\ref{tab:qualitative_metrics} presents the exact quantitative score decomp
 \centering
 \caption{Quantitative Forensic Prediction Breakdown on Exemplar Demo Validation Portraits from FRLL-Morphs}
 \label{tab:qualitative_metrics}
-\small
-\begin{tabularx}{\textwidth}{llccccccc}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llccccccc}
 \toprule
-\textbf{Sample ID} & \textbf{Attack / Presentation Family} & \textbf{Condition} & \textbf{Margin $S_s$} & \textbf{Margin $S_f$} & \textbf{Z $Z_s$} & \textbf{Z $Z_f$} & \textbf{Score $Z_{\text{final}}$} & \textbf{Decision ($\tau = 0.00$)} \\ \midrule
-Sample A & Bona Fide (Genuine Reference) & Clean Digital & $-0.4821$ & $-0.3912$ & $-2.05$ & $-2.23$ & $\mathbf{-2.14}$ & Bona Fide (Correct) \\
-Sample B & \texttt{morph\_opencv} (Landmark Warp) & Clean Digital & $+0.8412$ & $-0.1045$ & $+3.12$ & $-0.85$ & $\mathbf{+1.14}$ & Morph Attack (Correct) \\
-Sample C & \texttt{morph\_stylegan} (Latent Resynth) & Clean Digital & $-0.1520$ & $+0.9124$ & $-0.72$ & $+4.62$ & $\mathbf{+1.95}$ & Morph Attack (Correct) \\
-Sample D & \texttt{morph\_stylegan} (Print-Scan) & Print-Scan & $-0.5102$ & $+0.9840$ & $-2.16$ & $+5.02$ & $\mathbf{+1.43}$ & Morph Attack (Correct) \\
-Sample E & \texttt{morph\_amsl} (High-Quality Blend) & JPEG ($q=30$) & $+0.7125$ & $+0.2104$ & $+2.62$ & $+0.65$ & $\mathbf{+1.64}$ & Morph Attack (Correct) \\
-Sample F & Bona Fide (Under Print-Scan) & Print-Scan & $-0.4950$ & $-0.2810$ & $-2.11$ & $-1.70$ & $\mathbf{-1.91}$ & Bona Fide (Correct) \\
+Sample ID & Attack / Presentation Family & Condition & Margin $S_s$ & Margin $S_f$ & Z $Z_s$ & Z $Z_f$ & Score $Z_{\text{final}}$ & Decision ($\tau = 0.00$) \\ \midrule
+Sample A & Bona Fide (Genuine Reference) & Clean Digital & $-0.4821$ & $-0.3912$ & $-2.05$ & $-2.23$ & $-2.14$ & Bona Fide (Correct) \\
+Sample B & \texttt{morph\_opencv} (Landmark Warp) & Clean Digital & $+0.8412$ & $-0.1045$ & $+3.12$ & $-0.85$ & $+1.14$ & Morph Attack (Correct) \\
+Sample C & \texttt{morph\_stylegan} (Latent Resynth) & Clean Digital & $-0.1520$ & $+0.9124$ & $-0.72$ & $+4.62$ & $+1.95$ & Morph Attack (Correct) \\
+Sample D & \texttt{morph\_stylegan} (Print-Scan) & Print-Scan & $-0.5102$ & $+0.9840$ & $-2.16$ & $+5.02$ & $+1.43$ & Morph Attack (Correct) \\
+Sample E & \texttt{morph\_amsl} (High-Quality Blend) & JPEG ($q=30$) & $+0.7125$ & $+0.2104$ & $+2.62$ & $+0.65$ & $+1.64$ & Morph Attack (Correct) \\
+Sample F & Bona Fide (Under Print-Scan) & Print-Scan & $-0.4950$ & $-0.2810$ & $-2.11$ & $-1.70$ & $-1.91$ & Bona Fide (Correct) \\
 \bottomrule
-\end{tabularx}
+\end{tabular}%
+}
 \end{table}
 
 \subsection{Architectural Ablation on Fusion and Supervision Strategies}
@@ -442,46 +442,48 @@ Table~\ref{tab:ablation} summarizes the architectural ablation justifying each d
 \begin{enumerate}[leftmargin=*]
     \item \textbf{Early Concatenation Failure:} Directly concatenating ViT tokens and ConvNet features into a shared ArcFace head inverted the feature space (0.2422 AUC on OpenCV) due to gradient dominance.
     \item \textbf{Max-OR Softmax Fusion:} Saturated on out-of-distribution bona fide portraits ($\text{BPCER@1\%} = 100\%$).
-    \item \textbf{Proposed Z-Score Calibration:} Standardizing linear cosine margins against the active bona fide distribution completely eliminated saturation, achieving the highest minimum ROC-AUC across all 15 operational slices (\textbf{0.9809}).
+    \item \textbf{Proposed Z-Score Calibration:} Standardizing linear cosine margins against the active bona fide distribution completely eliminated saturation, achieving the highest minimum ROC-AUC across all 15 operational slices (0.9809).
 \end{enumerate}
 
 \begin{table}[h]
 \centering
 \caption{Architectural and Fusion Ablation on FRLL-Morphs Across Operational Slices}
 \label{tab:ablation}
-\small
-\begin{tabularx}{\textwidth}{lccccc}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccc}
 \toprule
-\textbf{Architecture Variant} & \textbf{OpenCV Clean} & \textbf{StyleGAN2 Clean} & \textbf{StyleGAN2 P-S} & \textbf{Min AUC} & \textbf{Operational Diagnostic Finding} \\ \midrule
+Architecture Variant & OpenCV Clean & StyleGAN2 Clean & StyleGAN2 P-S & Min AUC & Operational Diagnostic Finding \\ \midrule
 Phase 1 Spatial ViT + ArcFace & 0.9993 / 0.94\% & 0.4988 / 51.0\% & 0.5780 & 0.4973 & Spatial blindness to smooth neural manifolds \\
 Phase 2 Early Concat (Trial 1) & 0.2422 (inv.) & 0.8525 / 24.0\% & -- & Collapse & Gradient dominance by fast CNN branches \\
 Phase 2 Max-OR Softmax Fusion & 0.7924 / 22.9\% & 0.5363 / 46.5\% & 0.6489 & $\sim 0.51$ & Softmax saturation on OOD bona fide samples \\
 Phase 2 Spatial Head Only & 0.9991 / 0.53\% & 0.9116 / 17.0\% & 0.3155 & 0.3155 & Vulnerable to analog print-scan low-pass filtering \\
 Phase 2 Frequency Head Only & 0.8564 / 23.0\% & 0.7644 / 29.9\% & 0.9977 & 0.6605 & Sub-optimal sensitivity to fine spatial seams \\
 Phase 2 Fused ArcFace Head & 0.2937 & 0.1305 & 0.3952 & 0.0324 & Uncalibrated joint margin collapses out-of-dist \\
-\textbf{Phase 2 Calibrated (Proposed)} & \textbf{0.9997 / 0.74\%} & \textbf{0.9399 / 14.66\%} & \textbf{0.9854} & \textbf{0.9809} & \textbf{Robust zero-shot generalization across all 15 slices} \\ \bottomrule
-\end{tabularx}
+Phase 2 Calibrated (Proposed) & 0.9997 / 0.74\% & 0.9399 / 14.66\% & 0.9854 & 0.9809 & Robust zero-shot generalization across all 15 slices \\ \bottomrule
+\end{tabular}%
+}
 \end{table}
 
 \subsection{Parameter and Latency Profile}
-Table~\ref{tab:param_profile} details the parameter count and single-image latency profile of UID-MAD. With a total inference latency of \textbf{17.3\,ms}, UID-MAD easily complies with the $<50$\,ms e-Gate budget.
+Table~\ref{tab:param_profile} details the parameter count and single-image latency profile of UID-MAD. With a total inference latency of 17.3\,ms, UID-MAD easily complies with the $<50$\,ms e-Gate budget.
 
 \begin{table}[h]
 \centering
 \caption{Parameter Count and Single-Image Inference Latency Profile (Dual NVIDIA T4 GPUs)}
 \label{tab:param_profile}
-\small
-\begin{tabularx}{\textwidth}{lcccr}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccr}
 \toprule
-\textbf{Architectural Sub-Module} & \textbf{Total Parameters} & \textbf{Trainable Parameters (Stage 2)} & \textbf{Share (\%)} & \textbf{Single-Image Latency} \\ \midrule
+Architectural Sub-Module & Total Parameters & Trainable Parameters (Stage 2) & Share (\%) & Single-Image Latency \\ \midrule
 Stream A: DINOv2 ViT-S/14 Backbone & 21.60\,M & 0.59\,M (LoRA rank-16) & 96.5\% & 14.2\,ms \\
 Spatial Multi-Scale Aggregator \& Projector & 0.46\,M & 0.46\,M & 2.1\% & 0.6\,ms \\
 Stream B: Non-Trainable Laplacian Filter Bank & 0.00\,M & 0.00\,M (Fixed Kernels) & 0.0\% & 0.4\,ms \\
 Stream B: Residual 4-Stage ConvNet & 0.22\,M & 0.22\,M & 1.0\% & 1.6\,ms \\
 Cross-Stream Alignment \& Gating Network & 0.10\,M & 0.10\,M & 0.4\% & 0.4\,ms \\
 Decoupled ArcFace Heads ($3 \times 2$) & 0.001\,M & 0.001\,M & $< 0.1\%$ & 0.1\,ms \\ \midrule
-\textbf{Total UID-MAD Architecture} & \textbf{22.38\,M} & \textbf{1.37\,M (6.1\% of total)} & \textbf{100.0\%} & \textbf{17.3\,ms} \\ \bottomrule
-\end{tabularx}
+Total UID-MAD Architecture & 22.38\,M & 1.37\,M (6.1\% of total) & 100.0\% & 17.3\,ms \\ \bottomrule
+\end{tabular}%
+}
 \end{table}
 
 % =========================================================================
@@ -518,7 +520,7 @@ While the forensic detection pipeline has been empirically validated, the second
 \section{Conclusion}
 \label{sec:conclusion}
 
-This mid-semester progress report presented the design, implementation, and empirical verification of **UID-MAD (Unified Interpretable Dual-Stream Morph Attack Detection)**. By factoring morph detection according to attack physics, the system combines a LoRA-adapted DINOv2 Vision Transformer for localized alpha-blending seams with high-pass Laplacian and Haar wavelet filters for neural upsampling noise. 
+This mid-semester progress report presented the design, implementation, and empirical verification of UID-MAD (Unified Interpretable Dual-Stream Morph Attack Detection). By factoring morph detection according to attack physics, the system combines a LoRA-adapted DINOv2 Vision Transformer for localized alpha-blending seams with high-pass Laplacian and Haar wavelet filters for neural upsampling noise. 
 
 Evaluated strictly under ISO/IEC 30107-3 standards across 15 operational slices of FRLL-Morphs, UID-MAD resolved the generative blind spot, elevating clean StyleGAN2 detection from a random-chance 0.4988 to 0.9399 ROC-AUC. Furthermore, the framework established an orthogonal domain complementarity under physical print-scan degradation ($>0.997$ frequency AUC across all generators). With equal-weight bona fide Z-score calibration achieving an overall mean of 0.992 ROC-AUC and an edge inference latency of 17.3\,ms, UID-MAD establishes a robust, standards-compliant foundation for automated border security.
 
